@@ -1,0 +1,465 @@
+// Laboratory Equipment Management — skema sesuai ERD + perubahan wajib.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────── Enums ─────────────
+enum Role {
+  QA
+  admin
+  technician
+  SPV
+}
+
+enum EquipmentStatus {
+  available
+  borrowed
+  damaged
+  maintenance
+  calibration
+}
+
+enum ItemCondition {
+  good
+  minor_damage
+  major_damage
+}
+
+enum SupportingStatus {
+  available
+  borrowed
+  damaged
+}
+
+enum BorrowingStatus {
+  borrowed
+  returned
+}
+
+enum CalibrationResult {
+  passed
+  failed
+}
+
+enum MaintenanceType {
+  routine
+  repair
+}
+
+enum MaintenanceStatus {
+  scheduled
+  in_progress
+  completed
+  cancelled
+}
+
+enum SensorType {
+  temperature
+  humidity
+}
+
+enum SensorStatus {
+  active
+  inactive
+  damaged
+}
+
+enum DocumentType {
+  manual
+  certificate
+  procedure
+  photo
+  other
+}
+
+enum EmailReminderType {
+  calibration_30d
+  calibration_7d
+  calibration_1d
+  calibration_overdue
+  borrowing_overdue
+  digest
+}
+
+enum EmailStatus {
+  queued
+  sent
+  failed
+}
+
+enum NotificationType {
+  borrowing
+  calibration
+  maintenance
+  monitoring
+  system
+}
+
+// ───────────── Models ─────────────
+model User {
+  user_id       String   @id @default(uuid()) @db.Uuid
+  name          String
+  email         String   @unique
+  password_hash String
+  role          Role
+  is_active     Boolean  @default(true)
+  /// false = tidak menerima email pengingat (notifikasi di aplikasi tetap dibuat).
+  email_notifications Boolean @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  email_logs      EmailLog[]
+  rooms_in_charge Room[]         @relation("RoomPIC")
+  borrowings      Borrowing[]
+  calibrations    Calibration[]
+  maintenances    Maintenance[]
+  documents       Document[]
+  notifications   Notification[]
+  activity_logs   ActivityLog[]
+  refresh_tokens  RefreshToken[]
+
+  @@map("users")
+}
+
+model Room {
+  room_id            String   @id @default(uuid()) @db.Uuid
+  room_code          String   @unique
+  room_name          String
+  equipment_capacity Int      @default(0)
+  person_in_charge   String?  @db.Uuid
+  description        String?
+  is_active          Boolean  @default(true)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  pic       User?       @relation("RoomPIC", fields: [person_in_charge], references: [user_id], onDelete: SetNull)
+  equipment Equipment[]
+  sensors   Sensor[]
+
+  @@index([person_in_charge])
+  @@map("rooms")
+}
+
+model Equipment {
+  equipment_id          String          @id @default(uuid()) @db.Uuid
+  inventory_code        String          @unique
+  qr_token              String          @unique
+  equipment_name        String
+  equipment_type        String
+  brand                 String?
+  model                 String?
+  room_id               String          @db.Uuid
+  status                EquipmentStatus @default(available)
+  /// null = kondisi belum diketahui/dinilai. Tidak dikirim saat dibuat = good.
+  condition             ItemCondition?  @default(good)
+  purchase_date         DateTime?       @db.Date
+  purchase_price        Decimal?        @db.Decimal(15, 2)
+  useful_life_years     Int?
+  specifications        String?
+  next_calibration_date DateTime?       @db.Date
+  is_active             Boolean         @default(true)
+  created_at            DateTime        @default(now())
+  updated_at            DateTime        @updatedAt
+
+  room              Room              @relation(fields: [room_id], references: [room_id], onDelete: Restrict)
+  borrowing_details BorrowingDetail[]
+  calibrations      Calibration[]
+  maintenances      Maintenance[]
+  documents         Document[]
+  email_logs        EmailLog[]
+
+  @@index([status])
+  @@index([room_id])
+  @@index([next_calibration_date])
+  @@map("equipment")
+}
+
+model SupportingEquipment {
+  supporting_equipment_id String           @id @default(uuid()) @db.Uuid
+  item_code               String           @unique
+  qr_token                String           @unique
+  item_name               String
+  item_type               String?
+  brand                   String?
+  model                   String?
+  unit                    String           @default("pcs")
+  total_quantity          Int              @default(0)
+  available_quantity      Int              @default(0)
+  condition               ItemCondition    @default(good)
+  status                  SupportingStatus @default(available)
+  description             String?
+  specifications          String?
+  is_active               Boolean          @default(true)
+  created_at              DateTime         @default(now())
+  updated_at              DateTime         @updatedAt
+
+  borrowing_details SupportingBorrowingDetail[]
+
+  @@index([status])
+  @@map("supporting_equipment")
+}
+
+model Borrowing {
+  borrowing_id         String          @id @default(uuid()) @db.Uuid
+  user_id              String          @db.Uuid
+  borrowing_time       DateTime
+  expected_return_time DateTime
+  actual_return_time   DateTime?
+  purpose              String
+  usage_location       String?
+  borrowing_status     BorrowingStatus @default(borrowed)
+  notes                String?
+  created_at           DateTime        @default(now())
+  updated_at           DateTime        @updatedAt
+
+  user               User                        @relation(fields: [user_id], references: [user_id], onDelete: Restrict)
+  details            BorrowingDetail[]
+  supporting_details SupportingBorrowingDetail[]
+  notifications      Notification[]
+
+  @@index([borrowing_status])
+  @@index([expected_return_time])
+  @@index([user_id])
+  @@map("borrowings")
+}
+
+model BorrowingDetail {
+  detail_id         String  @id @default(uuid()) @db.Uuid
+  borrowing_id      String  @db.Uuid
+  equipment_id      String  @db.Uuid
+  initial_condition String?
+  final_condition   String?
+  has_damage        Boolean @default(false)
+  damage_notes      String?
+
+  borrowing Borrowing @relation(fields: [borrowing_id], references: [borrowing_id], onDelete: Cascade)
+  equipment Equipment @relation(fields: [equipment_id], references: [equipment_id], onDelete: Restrict)
+
+  @@unique([borrowing_id, equipment_id])
+  @@index([equipment_id])
+  @@map("borrowing_details")
+}
+
+model SupportingBorrowingDetail {
+  supporting_detail_id    String  @id @default(uuid()) @db.Uuid
+  borrowing_id            String  @db.Uuid
+  supporting_equipment_id String  @db.Uuid
+  quantity_borrowed       Int
+  quantity_returned       Int     @default(0)
+  initial_condition       String?
+  final_condition         String?
+  has_damage              Boolean @default(false)
+  damage_notes            String?
+
+  borrowing           Borrowing           @relation(fields: [borrowing_id], references: [borrowing_id], onDelete: Cascade)
+  supporting_equipment SupportingEquipment @relation(fields: [supporting_equipment_id], references: [supporting_equipment_id], onDelete: Restrict)
+
+  @@unique([borrowing_id, supporting_equipment_id])
+  @@index([supporting_equipment_id])
+  @@map("supporting_borrowing_details")
+}
+
+model Calibration {
+  calibration_id        String            @id @default(uuid()) @db.Uuid
+  equipment_id          String            @db.Uuid
+  technician_id         String            @db.Uuid
+  calibration_date      DateTime          @db.Date
+  next_calibration_date DateTime          @db.Date
+  calibration_provider  String?
+  certificate_number    String?
+  certificate_file_url  String?
+  calibration_result    CalibrationResult
+  cost                  Decimal?          @db.Decimal(15, 2)
+  notes                 String?
+  created_at            DateTime          @default(now())
+
+  equipment     Equipment      @relation(fields: [equipment_id], references: [equipment_id], onDelete: Restrict)
+  technician    User           @relation(fields: [technician_id], references: [user_id], onDelete: Restrict)
+  notifications Notification[]
+
+  @@index([equipment_id, calibration_date])
+  @@index([technician_id])
+  @@map("calibrations")
+}
+
+model Maintenance {
+  maintenance_id       String            @id @default(uuid()) @db.Uuid
+  equipment_id         String            @db.Uuid
+  technician_id        String            @db.Uuid
+  maintenance_type     MaintenanceType
+  maintenance_date     DateTime
+  completion_date      DateTime?
+  description          String?
+  cost                 Decimal?          @db.Decimal(15, 2)
+  status               MaintenanceStatus @default(scheduled)
+  replaced_spare_parts String?
+  notes                String?
+  /// Status alat sebelum maintenance dimulai (untuk dikembalikan saat dibatalkan). Diisi server.
+  prev_equipment_status EquipmentStatus?
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
+
+  equipment     Equipment      @relation(fields: [equipment_id], references: [equipment_id], onDelete: Restrict)
+  technician    User           @relation(fields: [technician_id], references: [user_id], onDelete: Restrict)
+  notifications Notification[]
+
+  @@index([equipment_id])
+  @@index([technician_id])
+  @@index([status])
+  @@index([maintenance_date])
+  @@map("maintenances")
+}
+
+model Sensor {
+  sensor_id       String       @id @default(uuid()) @db.Uuid
+  room_id         String       @db.Uuid
+  sensor_code     String       @unique
+  sensor_type     SensorType
+  unit            String
+  sensor_location String?
+  sensor_status   SensorStatus @default(active)
+  min_threshold   Decimal      @db.Decimal(8, 2)
+  max_threshold   Decimal      @db.Decimal(8, 2)
+  api_key_hash    String?
+  is_active       Boolean      @default(true)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+
+  room        Room             @relation(fields: [room_id], references: [room_id], onDelete: Restrict)
+  monitorings RoomMonitoring[]
+
+  @@index([room_id])
+  @@map("sensors")
+}
+
+model RoomMonitoring {
+  monitoring_id    String   @id @default(uuid()) @db.Uuid
+  sensor_id        String   @db.Uuid
+  value            Decimal  @db.Decimal(8, 2)
+  measurement_time DateTime
+  received_at      DateTime @default(now())
+
+  sensor Sensor @relation(fields: [sensor_id], references: [sensor_id], onDelete: Cascade)
+
+  @@index([sensor_id, measurement_time])
+  @@map("room_monitoring")
+}
+
+model Document {
+  document_id   String       @id @default(uuid()) @db.Uuid
+  equipment_id  String       @db.Uuid
+  uploaded_by   String       @db.Uuid
+  document_type DocumentType
+  file_name     String
+  file_url      String
+  file_type     String?
+  file_size     BigInt?
+  uploaded_at   DateTime     @default(now())
+
+  equipment Equipment @relation(fields: [equipment_id], references: [equipment_id], onDelete: Cascade)
+  uploader  User      @relation(fields: [uploaded_by], references: [user_id], onDelete: Restrict)
+
+  @@index([equipment_id])
+  @@index([uploaded_by])
+  @@map("documents")
+}
+
+model Notification {
+  notification_id   String           @id @default(uuid()) @db.Uuid
+  user_id           String           @db.Uuid
+  borrowing_id      String?          @db.Uuid
+  calibration_id    String?          @db.Uuid
+  maintenance_id    String?          @db.Uuid
+  notification_type NotificationType
+  title             String
+  message           String
+  is_read           Boolean          @default(false)
+  created_at        DateTime         @default(now())
+  read_at           DateTime?
+  /// Kunci anti-duplikat untuk notifikasi otomatis (cron). Null untuk notifikasi biasa.
+  dedupe_key        String?
+
+  user        User         @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  borrowing   Borrowing?   @relation(fields: [borrowing_id], references: [borrowing_id], onDelete: SetNull)
+  calibration Calibration? @relation(fields: [calibration_id], references: [calibration_id], onDelete: SetNull)
+  maintenance Maintenance? @relation(fields: [maintenance_id], references: [maintenance_id], onDelete: SetNull)
+
+  @@index([user_id, is_read])
+  @@index([dedupe_key])
+  @@map("notifications")
+}
+
+/// Catatan email. Baris `digest` = satu email ringkasan (status kirim). Baris tahap (calibration_*) = penanda per alat
+/// (anak dari digest via parent_id) yang menjamin satu tahap tidak terkirim dua kali untuk jadwal kalibrasi yang sama.
+model EmailLog {
+  email_log_id          String            @id @default(uuid()) @db.Uuid
+  user_id               String            @db.Uuid
+  equipment_id          String?           @db.Uuid
+  parent_id             String?           @db.Uuid
+  reminder_type         EmailReminderType
+  next_calibration_date DateTime?         @db.Date
+  recipient_email       String
+  subject               String
+  status                EmailStatus       @default(queued)
+  attempts              Int               @default(0)
+  error_message         String?
+  provider_message_id   String?
+  /// Data untuk merender ulang email (retry).
+  payload               Json?
+  created_at            DateTime          @default(now())
+  sent_at               DateTime?
+
+  user      User       @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  equipment Equipment? @relation(fields: [equipment_id], references: [equipment_id], onDelete: SetNull)
+  parent    EmailLog?  @relation("EmailLogChildren", fields: [parent_id], references: [email_log_id], onDelete: Cascade)
+  children  EmailLog[] @relation("EmailLogChildren")
+
+  @@unique([user_id, equipment_id, reminder_type, next_calibration_date])
+  @@index([status])
+  @@index([parent_id])
+  @@index([user_id, created_at])
+  @@map("email_logs")
+}
+
+model ActivityLog {
+  log_id      String   @id @default(uuid()) @db.Uuid
+  user_id     String?  @db.Uuid
+  action      String
+  entity_type String
+  entity_id   String?
+  old_data    Json?
+  new_data    Json?
+  ip_address  String?
+  created_at  DateTime @default(now())
+
+  user User? @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([entity_type, entity_id])
+  @@index([user_id])
+  @@index([action])
+  @@index([created_at])
+  @@map("activity_logs")
+}
+
+model RefreshToken {
+  token_id    String    @id @default(uuid()) @db.Uuid
+  user_id     String    @db.Uuid
+  token_hash  String    @unique
+  expires_at  DateTime
+  revoked_at  DateTime?
+  replaced_by String?   @db.Uuid
+  user_agent  String?
+  ip_address  String?
+  created_at  DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([expires_at])
+  @@map("refresh_tokens")
+}

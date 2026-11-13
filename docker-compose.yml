@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lab-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: lab_password
+      POSTGRES_DB: lab_equipment
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lab -d lab_equipment']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Produksi/uji image: docker compose --profile app up -d --build
+  api:
+    build: .
+    profiles: ['app']
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://lab:lab_password@postgres:5432/lab_equipment?schema=public
+      UPLOAD_DIR: /data/uploads
+    ports:
+      - '3000:3000'
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Opsional: docker compose --profile tools up -d
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: lab-pgadmin
+    profiles: ['tools']
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@lab.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - '5050:80'
+    depends_on:
+      - postgres
+
+  # Opsional (dev email): docker compose --profile tools up -d mailhog -> SMTP :1025, UI :8025
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: lab-mailhog
+    profiles: ['tools']
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  pgdata:
+  uploads:
