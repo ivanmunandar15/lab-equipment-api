@@ -10,9 +10,9 @@ RUN npm ci
 # ── 2) build: generate Prisma client + compile TypeScript ──
 FROM deps AS build
 COPY prisma ./prisma
-COPY tsconfig.json tsconfig.build.json ./
+COPY tsconfig.json tsconfig.build.json tsconfig.seed.json ./
 COPY src ./src
-RUN npx prisma generate && npm run build
+RUN npx prisma generate && npm run build && npm run build:seed
 
 # ── 3) prod-deps: hanya dependency produksi (prisma CLI ada di dependencies untuk migrate deploy) ──
 FROM node:20-bookworm-slim AS prod-deps
@@ -29,6 +29,8 @@ ENV NODE_ENV=production PORT=3000 UPLOAD_DIR=/data/uploads
 WORKDIR /app
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+# Seed terkompilasi (dipakai entrypoint bila SEED_ON_START=true); data CSV-nya ada di ./prisma/data
+COPY --from=build /app/dist-seed ./dist-seed
 COPY package.json ./
 COPY prisma ./prisma
 COPY scripts/docker-entrypoint.sh scripts/migrate-deploy.sh ./scripts/
