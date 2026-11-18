@@ -137,7 +137,7 @@ equipmentRouter.post('/bulk', write, h(async (req, res) => {
       out.push(
         await tx.equipment.create({
           data: {
-            inventory_code: r.inventory_code, qr_token: generateQrToken(), equipment_name: r.equipment_name, equipment_type: r.equipment_type,
+            inventory_code: r.inventory_code, qr_token: generateQrToken(), equipment_name: r.equipment_name, equipment_type: emptyToNull(r.equipment_type) ?? null,
             brand: emptyToNull(r.brand) ?? null, model: emptyToNull(r.model) ?? null, room_id: r.room_id,
             status: r.status as Exclude<EqStatus, 'borrowed'>, condition: r.condition, // undefined = default good; null = tidak diketahui
             purchase_date: toDateOnlyOrNull(r.purchase_date), purchase_price: r.purchase_price ?? null, useful_life_years: r.useful_life_years ?? null,
@@ -160,7 +160,7 @@ equipmentRouter.post('/', write, h(async (req, res) => {
   const d = parse(createEquipmentSchema, req.body);
   noBorrowedStatus(d.status);
   const created = await equipment.create({
-    inventory_code: d.inventory_code, equipment_name: d.equipment_name, equipment_type: d.equipment_type,
+    inventory_code: d.inventory_code, equipment_name: d.equipment_name, equipment_type: emptyToNull(d.equipment_type) ?? null,
     brand: emptyToNull(d.brand), model: emptyToNull(d.model), room_id: roomIdOrThrow(d.room_id) as string,
     status: d.status as Exclude<EqStatus, 'borrowed'>, condition: d.condition === undefined ? 'good' : d.condition,
     purchase_date: toDateOnlyOrNull(d.purchase_date), purchase_price: d.purchase_price ?? null, useful_life_years: d.useful_life_years ?? null,
@@ -181,7 +181,7 @@ equipmentRouter.patch('/:id', write, h(async (req, res) => {
     {
       ...(p.inventory_code !== undefined ? { inventory_code: p.inventory_code } : {}),
       ...(p.equipment_name !== undefined ? { equipment_name: p.equipment_name } : {}),
-      ...(p.equipment_type !== undefined ? { equipment_type: p.equipment_type } : {}),
+      ...(p.equipment_type !== undefined ? { equipment_type: emptyToNull(p.equipment_type) } : {}),
       ...(p.brand !== undefined ? { brand: emptyToNull(p.brand) } : {}),
       ...(p.model !== undefined ? { model: emptyToNull(p.model) } : {}),
       ...(p.room_id !== undefined ? { room_id: roomIdOrThrow(p.room_id) } : {}),

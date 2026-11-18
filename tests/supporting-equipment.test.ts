@@ -116,9 +116,18 @@ describe('CRUD', () => {
     expect(fake.activityLog.rows.some((l: any) => l.action === 'CREATE' && l.entity_type === 'supporting_equipment')).toBe(true);
   });
 
+  it('create: hanya item_code & item_name wajib; sisanya opsional dengan default', async () => {
+    const res = await request(app).post(API).set(bearer(spv)).send({ item_code: 'MIN-1', item_name: 'Item Minimal' });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ item_type: null, brand: null, model: null, unit: 'pcs', total_quantity: 0, condition: 'good' });
+    const blank = await request(app).post(API).set(bearer(spv)).send({ item_code: 'MIN-2', item_name: 'Item Kosong', unit: '', item_type: '', brand: '', model: '' });
+    expect(blank.status).toBe(201);
+    expect(blank.body.data).toMatchObject({ item_type: null, brand: null, model: null, unit: 'pcs' });
+  });
+
   it('create: kondisi major_damage → status damaged; validasi 422; item_code ganda 409', async () => {
     expect((await mk({ condition: 'major_damage' })).body.data.status).toBe('damaged');
-    for (const bad of [{ total_quantity: 0 }, { total_quantity: -3 }, { total_quantity: 1.5 }, { total_quantity: '5' }, { item_name: 'x' }, { condition: 'rusak' }, { item_code: 'a  b' }, { item_code: '-ab' }]) {
+    for (const bad of [{ total_quantity: -3 }, { total_quantity: 1.5 }, { total_quantity: '5' }, { item_name: 'x' }, { condition: 'rusak' }, { item_code: 'a  b' }, { item_code: '-ab' }]) {
       expect((await mk(bad)).status).toBe(422);
     }
     const first = (await mk({ item_code: 'DUP-1' })).body.data;
@@ -295,7 +304,7 @@ describe('Impor CSV', () => {
   const MIXED = csv(
     'I-1,Beaker,Glassware,pcs,40,good', // 2 valid
     'I-2,Spatula,,,25,', // 3 valid (kolom opsional kosong)
-    'I-3,Pipet,Glassware,pcs,0,good', // 4: jumlah 0
+    'I-3,Pipet,Glassware,pcs,-1,good', // 4: jumlah negatif
     'I-1,Duplikat,,,5,', // 5: duplikat di file
     'I-5,Rusak,,pcs,abc,good', // 6: jumlah bukan angka
     'I-6,Aneh,,pcs,5,rusak', // 7: kondisi salah
@@ -341,7 +350,7 @@ describe('Impor CSV', () => {
   });
 
   it('header/file tidak valid → 422; file wajib; template memuat semua kolom', async () => {
-    expect((await upload('item_code,item_name\r\nA,B')).body.error.code).toBe('INVALID_CSV_HEADER');
+    expect((await upload('item_code\r\nA')).body.error.code).toBe('INVALID_CSV_HEADER');
     expect((await upload(HEAD)).body.error.code).toBe('CSV_EMPTY');
     expect((await request(app).post(`${API}/import`).set(bearer(spv))).status).toBe(422);
     const tpl = await request(app).get(`${API}/import-template.csv`).set(bearer(spv));

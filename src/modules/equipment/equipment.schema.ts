@@ -45,7 +45,6 @@ export const equipmentFields = {
     .max(50, 'maksimal 50 karakter')
     .regex(CODE_REGEX, CODE_MESSAGE),
   equipment_name: z.string().trim().min(2, 'minimal 2 karakter').max(150),
-  equipment_type: z.string().trim().min(2, 'minimal 2 karakter').max(100),
   status: z.enum(SETTABLE_STATUSES),
   condition: z.enum(CONDITIONS),
   useful_life_years: z.number().int().min(1).max(100),
@@ -57,7 +56,8 @@ export const idParams = z.object({ id: z.string().uuid('ID tidak valid') });
 export const createEquipmentBody = z.object({
   inventory_code: equipmentFields.inventory_code,
   equipment_name: equipmentFields.equipment_name,
-  equipment_type: equipmentFields.equipment_type,
+  // Opsional: equipment_type, brand, model, purchase_date, next_calibration_date (kosong/null = tidak diisi).
+  equipment_type: optText(100),
   brand: optText(100),
   model: optText(100),
   room_id: z.string().uuid('room_id tidak valid'),

@@ -13,7 +13,8 @@ export const supportingFields = {
   item_code: equipmentFields.inventory_code,
   item_name: z.string().trim().min(2, 'minimal 2 karakter').max(150),
   unit: z.string().trim().min(1, 'wajib diisi').max(20),
-  total_quantity: z.number({ invalid_type_error: 'harus berupa angka' }).int('harus bilangan bulat').min(1, 'minimal 1').max(1_000_000),
+  // 0 = stok belum diisi (default DB).
+  total_quantity: z.number({ invalid_type_error: 'harus berupa angka' }).int('harus bilangan bulat').min(0, 'tidak boleh negatif').max(1_000_000),
   condition: z.enum(CONDITIONS),
 };
 
@@ -24,8 +25,9 @@ export const createSupportingBody = z.object({
   item_type: optText(100),
   brand: optText(100),
   model: optText(100),
-  unit: supportingFields.unit.default('pcs'),
-  total_quantity: supportingFields.total_quantity,
+  // Wajib hanya item_code & item_name. Sisanya opsional: kosong = default (unit 'pcs', total_quantity 0, condition 'good').
+  unit: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), supportingFields.unit.default('pcs')),
+  total_quantity: supportingFields.total_quantity.default(0),
   condition: supportingFields.condition.default('good'),
   description: optText(2000),
   specifications: optText(5000),

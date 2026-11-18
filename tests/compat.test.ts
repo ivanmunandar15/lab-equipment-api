@@ -205,6 +205,11 @@ describe('equipment', () => {
     expect(res.body.qr_token).toMatch(/^[A-Za-z0-9]{12}$/);
     expect(res.body.equipment_id).toBeDefined();
   });
+  it('create: equipment_type, brand, model, purchase_date, next_calibration_date boleh kosong', async () => {
+    const res = await mkEq({ inventory_code: 'EQ-OPT', equipment_type: '', brand: '', model: '', purchase_date: '', next_calibration_date: '' });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ equipment_type: '', brand: '', model: '', purchase_date: null, next_calibration_date: null });
+  });
   it('create/patch: condition, purchase_*, useful_life_years, specifications, next_calibration_date boleh null atau tidak dikirim', async () => {
     const nulls = await mkEq({ inventory_code: 'EQ-N1', condition: null, purchase_date: null, purchase_price: null, useful_life_years: null, specifications: null, next_calibration_date: null });
     expect(nulls.status).toBe(201);

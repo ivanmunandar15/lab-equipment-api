@@ -19,7 +19,8 @@ export const IMPORT_COLUMNS = [
   'inventory_code', 'equipment_name', 'equipment_type', 'brand', 'model', 'room_code', 'status', 'condition',
   'purchase_date', 'purchase_price', 'useful_life_years', 'specifications', 'next_calibration_date',
 ];
-const REQUIRED = ['inventory_code', 'equipment_name', 'equipment_type', 'room_code'];
+// equipment_type, brand, model, purchase_date, next_calibration_date, dst. opsional (kolom boleh kosong / tidak ada).
+const REQUIRED = ['inventory_code', 'equipment_name', 'room_code'];
 
 export const importTemplateCsv = () =>
   csvText(IMPORT_COLUMNS, [
@@ -38,7 +39,7 @@ const empty = <T extends z.ZodTypeAny>(s: T) =>
 const rowSchema = z.object({
   inventory_code: equipmentFields.inventory_code,
   equipment_name: equipmentFields.equipment_name,
-  equipment_type: equipmentFields.equipment_type,
+  equipment_type: empty(z.string().trim().max(100)),
   room_code: z.string().trim().min(1, 'wajib diisi').max(30),
   brand: empty(z.string().trim().max(100)),
   model: empty(z.string().trim().max(100)),

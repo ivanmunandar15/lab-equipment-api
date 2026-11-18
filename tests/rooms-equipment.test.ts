@@ -126,6 +126,18 @@ describe('Equipment CRUD', () => {
     expect((await mkEq({ room_id: '99999999-9999-4999-8999-999999999999' })).status).toBe(422);
   });
 
+  it('POST/PATCH: equipment_type, brand, model, purchase_date, next_calibration_date opsional', async () => {
+    const res = await request(app).post(`${API}/equipment`).set(bearer(spv)).send({ inventory_code: 'OPT-1', equipment_name: 'Alat Tanpa Detail', room_id: ROOM_B });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({ equipment_type: null, brand: null, model: null, purchase_date: null, next_calibration_date: null });
+    const blank = await request(app).post(`${API}/equipment`).set(bearer(spv)).send({ inventory_code: 'OPT-2', equipment_name: 'Alat Kosong', equipment_type: '', brand: '', model: '', room_id: ROOM_B });
+    expect(blank.status).toBe(201);
+    expect(blank.body.data).toMatchObject({ equipment_type: null, brand: null, model: null });
+    const upd = await request(app).patch(`${API}/equipment/${res.body.data.equipment_id}`).set(bearer(spv)).send({ equipment_type: null });
+    expect(upd.status).toBe(200);
+    expect(upd.body.data.equipment_type).toBeNull();
+  });
+
   it('POST/PATCH: condition boleh null (tidak diketahui); tidak dikirim = good', async () => {
     const unknown = await mkEq({ condition: null });
     expect(unknown.status).toBe(201);

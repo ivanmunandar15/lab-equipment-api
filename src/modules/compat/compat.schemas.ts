@@ -12,6 +12,9 @@ const isoDateTime = z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Tang
 const text = (label: string, max = 200) =>
   z.string().trim().min(1, `${label} wajib diisi`).max(max, `${label} maksimal ${max} karakter`);
 const longText = z.string().max(5000, 'Maksimal 5000 karakter');
+/** Opsional: boleh kosong (''), null, atau tidak dikirim. */
+const optText = (label: string, max = 200) =>
+  z.string().trim().max(max, `${label} maksimal ${max} karakter`).nullable().optional();
 const id = z.string().min(1);
 const nonNegative = (label: string) => z.number().nonnegative(`${label} tidak boleh negatif`);
 const positiveInt = (label: string) => z.number().int(`${label} harus bilangan bulat`).min(1, `${label} minimal 1`);
@@ -61,19 +64,20 @@ export const updateRoomSchema = createRoomSchema.partial();
 const equipmentBase = z.object({
   inventory_code: code('Kode inventaris'),
   equipment_name: text('Nama alat', 150),
-  equipment_type: text('Jenis alat', 100),
-  brand: text('Merek', 100),
-  model: text('Model', 100),
+  // Opsional (boleh kosong/null/tidak dikirim): equipment_type, brand, model.
+  equipment_type: optText('Jenis alat', 100),
+  brand: optText('Merek', 100),
+  model: optText('Model', 100),
   room_id: text('Ruangan', 50),
   status: z.enum(['available', 'borrowed', 'damaged', 'maintenance', 'calibration']),
   // Keenam field berikut boleh null (tidak diketahui / tidak berlaku); tidak dikirim = null,
   // kecuali condition yang default-nya "good". Alat tanpa next_calibration_date = tidak perlu kalibrasi.
   condition: condition.nullable().optional(),
-  purchase_date: isoDate.nullable().optional(),
+  purchase_date: isoDate.or(z.literal('')).nullable().optional(),
   purchase_price: nonNegative('Harga beli').nullable().optional(),
   useful_life_years: positiveInt('Masa manfaat').nullable().optional(),
   specifications: longText.nullable().optional(),
-  next_calibration_date: isoDate.nullable().optional(),
+  next_calibration_date: isoDate.or(z.literal('')).nullable().optional(),
 });
 export const createEquipmentSchema = equipmentBase.strict();
 export const updateEquipmentSchema = equipmentBase.partial().strict();
@@ -83,14 +87,15 @@ export const bulkEquipmentSchema = z.array(createEquipmentSchema).min(1, 'Tidak 
 const supportingBase = z.object({
   item_code: code('Kode item'),
   item_name: text('Nama item', 150),
-  item_type: text('Jenis item', 100),
-  brand: text('Merek', 100),
-  model: z.string().trim().max(100),
-  unit: text('Satuan', 30),
-  total_quantity: positiveInt('Jumlah total'),
-  condition,
-  description: longText,
-  specifications: longText,
+  // Wajib hanya item_code & item_name. Sisanya opsional; kosong = default (unit 'pcs', total_quantity 0, condition 'good').
+  item_type: optText('Jenis item', 100),
+  brand: optText('Merek', 100),
+  model: optText('Model', 100),
+  unit: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), text('Satuan', 30).default('pcs')),
+  total_quantity: z.number().int('Jumlah total harus bilangan bulat').min(0, 'Jumlah total tidak boleh negatif').default(0),
+  condition: condition.default('good'),
+  description: longText.nullable().optional(),
+  specifications: longText.nullable().optional(),
 });
 export const createSupportingSchema = supportingBase.strict();
 export const updateSupportingSchema = supportingBase.partial().strict();
@@ -104,7 +109,7 @@ export const createBorrowingSchema = z
     // Waktu pinjam ditetapkan server (waktu server = sumber kebenaran); field diterima tetapi diabaikan.
     borrowing_time: isoDateTime.optional(),
     expected_return_time: isoDateTime,
-    purpose: text('Tujuan peminjaman', 300),
+    purpose: text('Tujuan penggunaan', 300),
     usage_location: text('Lokasi penggunaan', 150),
     notes: longText.optional(),
     equipment_ids: z.array(id),
@@ -118,7 +123,7 @@ export const createBorrowingSchema = z
 export const updateBorrowingSchema = z
   .object({
     expected_return_time: isoDateTime,
-    purpose: text('Tujuan peminjaman', 300),
+    purpose: text('Tujuan penggunaan', 300),
     usage_location: text('Lokasi penggunaan', 150),
     notes: longText,
   })

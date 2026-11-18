@@ -50,14 +50,14 @@ export const toRoom = (r: RoomLike) => ({
 
 /* ---------- Equipment ---------- */
 export interface EquipmentLike {
-  equipment_id: string; inventory_code: string; qr_token: string; equipment_name: string; equipment_type: string;
+  equipment_id: string; inventory_code: string; qr_token: string; equipment_name: string; equipment_type: string | null;
   brand: string | null; model: string | null; room_id: string; status: string; condition: string | null;
   purchase_date: DateLike; purchase_price: Dec; useful_life_years: number | null; specifications: string | null;
   next_calibration_date: DateLike; is_active: boolean; created_at: Date | string; updated_at: Date | string;
 }
 export const toEquipment = (e: EquipmentLike) => ({
   equipment_id: e.equipment_id, inventory_code: e.inventory_code, qr_token: e.qr_token,
-  equipment_name: e.equipment_name, equipment_type: e.equipment_type, brand: text(e.brand), model: text(e.model),
+  equipment_name: e.equipment_name, equipment_type: text(e.equipment_type), brand: text(e.brand), model: text(e.model),
   room_id: e.room_id, status: e.status, condition: e.condition,
   // condition, purchase_*, useful_life_years, specifications, next_calibration_date dikembalikan null apa adanya
   // (tidak diketahui / tidak berlaku); frontend yang menampilkan "-" (tidak ada lagi nilai pengganti).

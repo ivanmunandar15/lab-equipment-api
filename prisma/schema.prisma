@@ -152,7 +152,8 @@ model Equipment {
   inventory_code        String          @unique
   qr_token              String          @unique
   equipment_name        String
-  equipment_type        String
+  /// Opsional: kosong = jenis alat belum diisi.
+  equipment_type        String?
   brand                 String?
   model                 String?
   room_id               String          @db.Uuid

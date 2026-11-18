@@ -69,12 +69,12 @@ export const supportingEquipmentSchemas = {
   },
   SupportingEquipmentInput: {
     type: 'object',
-    required: ['item_code', 'item_name', 'total_quantity'],
+    required: ['item_code', 'item_name'],
     description: 'qr_token, available_quantity, dan status pada body diabaikan.',
     properties: {
       item_code: { type: 'string' }, item_name: { type: 'string' }, item_type: { type: 'string' }, brand: { type: 'string' }, model: { type: 'string' },
       unit: { type: 'string', default: 'pcs' },
-      total_quantity: { type: 'integer', minimum: 1, description: 'PATCH: available_quantity ikut berubah sebesar selisih; ditolak jika < jumlah yang sedang dipinjam' },
+      total_quantity: { type: 'integer', minimum: 0, default: 0, description: 'PATCH: available_quantity ikut berubah sebesar selisih; ditolak jika < jumlah yang sedang dipinjam' },
       condition: { type: 'string', enum: COND }, description: { type: 'string' }, specifications: { type: 'string' },
       is_active: { type: 'boolean', description: 'Hanya PATCH' },
     },

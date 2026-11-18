@@ -17,7 +17,8 @@ const MAX_REPORTED_ERRORS = 500;
 export const IMPORT_COLUMNS = [
   'item_code', 'item_name', 'item_type', 'brand', 'model', 'unit', 'total_quantity', 'condition', 'description', 'specifications',
 ];
-const REQUIRED = ['item_code', 'item_name', 'total_quantity'];
+// Wajib hanya item_code & item_name; kolom lain opsional (total_quantity kosong = 0).
+const REQUIRED = ['item_code', 'item_name'];
 
 export const importTemplateCsv = () =>
   csvText(IMPORT_COLUMNS, [
@@ -25,7 +26,7 @@ export const importTemplateCsv = () =>
       item_code: 'SUP-001', item_name: 'Gelas Beaker 250 ml', item_type: 'Glassware', brand: 'Iwaki', model: 'Beaker 250',
       unit: 'pcs', total_quantity: '40', condition: 'good', description: 'Beaker borosilikat', specifications: 'Skala 25 ml',
     },
-    { item_code: 'SUP-002', item_name: 'Spatula Stainless', total_quantity: '25' },
+    { item_code: 'SUP-002', item_name: 'Spatula Stainless' },
   ]);
 
 const empty = <T extends z.ZodTypeAny>(s: T) =>
@@ -34,11 +35,13 @@ const empty = <T extends z.ZodTypeAny>(s: T) =>
 const rowSchema = z.object({
   item_code: supportingFields.item_code,
   item_name: supportingFields.item_name,
-  total_quantity: z.coerce
-    .number({ invalid_type_error: 'harus berupa angka' })
-    .int('harus bilangan bulat')
-    .min(1, 'minimal 1')
-    .max(1_000_000),
+  total_quantity: empty(
+    z.coerce
+      .number({ invalid_type_error: 'harus berupa angka' })
+      .int('harus bilangan bulat')
+      .min(0, 'tidak boleh negatif')
+      .max(1_000_000),
+  ),
   item_type: empty(z.string().trim().max(100)),
   brand: empty(z.string().trim().max(100)),
   model: empty(z.string().trim().max(100)),
@@ -166,6 +169,7 @@ export async function importCsv(file: { buffer: Buffer; originalname: string }, 
             while (tokens.has(token)) token = generateQrToken();
             tokens.add(token);
             const condition = r.data.condition ?? 'good';
+            const total = r.data.total_quantity ?? 0;
             const data = Object.fromEntries(Object.entries(r.data).filter(([, v]) => v !== undefined)) as typeof r.data;
             return {
               row: r.row,
@@ -173,8 +177,9 @@ export async function importCsv(file: { buffer: Buffer; originalname: string }, 
               qr_token: token,
               ...data,
               condition,
-              available_quantity: r.data.total_quantity,
-              status: deriveSupportingStatus(condition, r.data.total_quantity),
+              total_quantity: total,
+              available_quantity: total,
+              status: deriveSupportingStatus(condition, total),
             };
           });
 
