@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { PERMISSIONS } from '../../config/permissions';
 import { authenticate } from '../../middlewares/auth';
+import { auditRoute } from '../../middlewares/audit';
 import { authorize } from '../../middlewares/rbac';
 import { validate } from '../../middlewares/validate';
 import * as c from './email.controller';
-import { emailPreferencesBody, idParams, listEmailLogsQuery, runJobQuery, sendRemindersBody } from './email.schema';
+import { getEmailSettingsView } from './email-settings';
+import { emailPreferencesBody, idParams, listEmailLogsQuery, runJobQuery, sendRemindersBody, updateEmailSettingsBody } from './email.schema';
 
 /** /me */
 export const meRouter = Router();
@@ -22,3 +24,21 @@ adminRouter.use(authenticate);
 adminRouter.post('/email/test', authorize(...PERMISSIONS.adminTools.emailTest), c.sendTest);
 adminRouter.post('/email/calibration-reminders/send', authorize(...PERMISSIONS.adminTools.runJobs), validate({ body: sendRemindersBody }), c.sendCalibrationReminders);
 adminRouter.post('/jobs/calibration-reminders/run', authorize(...PERMISSIONS.adminTools.runJobs), validate({ query: runJobQuery }), c.runCalibrationReminders);
+
+/** Pengaturan email dari frontend (admin). Perubahan dicatat di activity log tanpa password. */
+const settingsLoadOld = () => getEmailSettingsView();
+adminRouter.get('/settings/email', authorize(...PERMISSIONS.adminTools.emailSettings), c.getSettings);
+adminRouter.patch(
+  '/settings/email',
+  authorize(...PERMISSIONS.adminTools.emailSettings),
+  validate({ body: updateEmailSettingsBody }),
+  auditRoute({ entityType: 'email_settings', action: 'UPDATE', loadOld: settingsLoadOld }),
+  c.updateSettings,
+);
+adminRouter.delete(
+  '/settings/email',
+  authorize(...PERMISSIONS.adminTools.emailSettings),
+  auditRoute({ entityType: 'email_settings', action: 'DELETE', loadOld: settingsLoadOld }),
+  c.resetSettings,
+);
+adminRouter.post('/settings/email/test-connection', authorize(...PERMISSIONS.adminTools.emailSettings), c.testSmtpConnection);

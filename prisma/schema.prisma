@@ -429,6 +429,17 @@ model EmailLog {
   @@map("email_logs")
 }
 
+/// Pengaturan aplikasi yang diubah dari frontend (key-value, nilai JSON). key "email" = pengaturan email pengingat.
+/// Nilai yang tidak ada di sini memakai default dari .env. Password SMTP disimpan terenkripsi (smtp_pass_enc).
+model AppSetting {
+  key        String   @id
+  value      Json
+  updated_at DateTime @updatedAt
+  updated_by String?  @db.Uuid
+
+  @@map("app_settings")
+}
+
 model ActivityLog {
   log_id      String   @id @default(uuid()) @db.Uuid
   user_id     String?  @db.Uuid

@@ -30,3 +30,27 @@ export type SendRemindersBody = z.infer<typeof sendRemindersBody>;
 export const runJobQuery = z.object({
   dry_run: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
 });
+
+/**
+ * Pengaturan email dari halaman admin. Semua field opsional (PATCH parsial).
+ * smtp_pass: kosong/tidak dikirim = password lama tidak diubah; clear_smtp_pass=true = hapus password tersimpan.
+ */
+export const updateEmailSettingsBody = z
+  .object({
+    email_enabled: z.boolean(),
+    calibration_email_mode: z.enum(['auto', 'manual']),
+    overdue_repeat_days: z.number().int().min(1, 'Minimal 1 hari').max(30, 'Maksimal 30 hari'),
+    calibration_job_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Format jam HH:mm, mis. 07:00'),
+    smtp_host: z.string().trim().min(1, 'Host SMTP wajib diisi').max(255),
+    smtp_port: z.number().int().min(1).max(65535),
+    smtp_secure: z.boolean(),
+    smtp_user: z.string().trim().max(255),
+    smtp_pass: z.string().max(500),
+    clear_smtp_pass: z.boolean(),
+    mail_from: z.string().trim().min(3, 'Pengirim minimal 3 karakter').max(255),
+    frontend_url: z.string().trim().url('URL frontend tidak valid').max(500),
+  })
+  .partial()
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Tidak ada perubahan yang dikirim' });
+export type UpdateEmailSettingsBody = z.infer<typeof updateEmailSettingsBody>;

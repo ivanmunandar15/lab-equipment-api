@@ -2,9 +2,9 @@ import { getDb } from '../config/db';
 import { addUtcDays, dateOnly, startOfUtcDay } from '../modules/equipment/equipment.derive';
 import { createNotification } from '../modules/notifications/notify.service';
 import type { Role } from '@prisma/client';
-import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { runCalibrationEmailReminders } from '../modules/email/calibration-reminders';
+import { loadEmailSettings } from '../modules/email/email-settings';
 
 export type CalibrationStage = 'H30' | 'H7' | 'OVERDUE';
 const RECIPIENTS: Role[] = ['admin', 'SPV', 'technician'];
@@ -63,8 +63,8 @@ export async function runCalibrationReminders(now: Date = new Date()) {
 export async function runCalibrationJob(now: Date = new Date()) {
   const in_app = await runCalibrationReminders(now);
   let email: unknown;
-  if (env.CALIBRATION_EMAIL_MODE === 'manual') {
-    // Email hanya lewat pengiriman manual (POST /admin/email/calibration-reminders/send), tidak otomatis.
+  if ((await loadEmailSettings()).calibration_email_mode === 'manual') {
+    // Mode manual (Pengaturan Email atau CALIBRATION_EMAIL_MODE): email hanya lewat pengiriman manual (POST /admin/email/calibration-reminders/send).
     return { in_app, email: { skipped: 'CALIBRATION_EMAIL_MODE=manual' } };
   }
   try {

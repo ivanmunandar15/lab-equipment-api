@@ -49,7 +49,7 @@ export const PERMISSIONS = {
   /** Log email pengingat. */
   emailLogs: { read: ['admin', 'SPV'] as RoleName[], retry: ['admin'] as RoleName[] },
   /** Alat admin: email uji & jalankan job manual. */
-  adminTools: { emailTest: ['admin'] as RoleName[], runJobs: ['admin'] as RoleName[] },
+  adminTools: { emailTest: ['admin'] as RoleName[], runJobs: ['admin'] as RoleName[], emailSettings: ['admin'] as RoleName[] },
   /** Aturan penanggung jawab alat (penerima email pengingat). */
   responsibilities: { read: ['admin', 'SPV'] as RoleName[], manage: ['admin'] as RoleName[] },
 };

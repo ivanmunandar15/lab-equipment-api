@@ -52,6 +52,8 @@ const schema = z.object({
    */
   CALIBRATION_EMAIL_MODE: z.enum(['auto', 'manual']).default('auto'),
   OVERDUE_REMINDER_REPEAT_DAYS: z.coerce.number().int().min(1).max(30).default(3),
+  /** Kunci enkripsi password SMTP yang disimpan dari halaman Pengaturan Email. Kosong = diturunkan dari JWT_REFRESH_SECRET. */
+  SETTINGS_ENCRYPTION_KEY: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16, 'SETTINGS_ENCRYPTION_KEY minimal 16 karakter').optional()),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 

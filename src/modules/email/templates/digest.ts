@@ -1,4 +1,4 @@
-import { env } from '../../../config/env';
+import { currentEmailSettings } from '../email-settings';
 import { STAGE_COLOR, STAGE_LABEL, STAGE_ORDER, type CalibrationEmailStage } from '../reminder-stage';
 import { escapeHtml as h } from './escape';
 
@@ -24,7 +24,7 @@ export interface Rendered {
   text: string;
 }
 
-const base = () => env.FRONTEND_URL.replace(/\/+$/, '');
+const base = () => currentEmailSettings().frontend_url.replace(/\/+$/, '');
 const equipmentUrl = (id: string) => `${base()}/equipment/${encodeURIComponent(id)}`;
 const calibrationUrl = () => `${base()}/calibration`;
 

@@ -1,12 +1,12 @@
 import type { Prisma } from '@prisma/client';
 import { EMAIL_RECIPIENTS } from '../../config/email-recipients';
-import { env } from '../../config/env';
 import { getDb } from '../../config/db';
 import { logger } from '../../config/logger';
 import { localDayKey } from '../../jobs/runner';
 import { addUtcDays, dateOnly } from '../equipment/equipment.derive';
 import { ruleMatches, type ResponsibilityRule } from '../responsibilities/responsibility.match';
 import { emailQueue } from './email.queue';
+import { loadEmailSettings } from './email-settings';
 import { daysUntil, emailStageFor, lookaheadLimit, DAY_MS, type CalibrationEmailStage } from './reminder-stage';
 import { digestSubject, type DigestItem, type DigestPayload } from './templates/digest';
 
@@ -126,7 +126,7 @@ export async function planCalibrationEmailsDetailed(now: Date = new Date()): Pro
   const existing = new Map<string, Marker>();
   for (const m of markers) if (m.reminder_type !== 'digest') existing.set(keyOf(m.user_id, m.equipment_id, m.reminder_type, m.next_calibration_date), m);
 
-  const repeatMs = env.OVERDUE_REMINDER_REPEAT_DAYS * DAY_MS;
+  const repeatMs = (await loadEmailSettings()).overdue_repeat_days * DAY_MS;
   const plans = new Map<string, PlannedEmail>();
   const unassigned: UnassignedItem[] = [];
 

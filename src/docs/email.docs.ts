@@ -6,7 +6,7 @@ const err = (description: string) => ({ description, ...json(ref('ErrorResponse'
 const idParam = { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } };
 const T = 'Email';
 
-export const emailTags = [{ name: T, description: 'Pengingat kalibrasi lewat email (digest harian 07:00 bila CALIBRATION_EMAIL_MODE=auto). Penerima = penanggung jawab alat (aturan di /responsibilities) + PIC ruangan. Preferensi: semua role. Log: admin/SPV. Retry/uji/job manual/aturan: admin.' }];
+export const emailTags = [{ name: T, description: 'Pengingat kalibrasi lewat email (digest harian bila mode auto; jam, mode, dan SMTP diatur admin di /admin/settings/email, default dari .env). Penerima = penanggung jawab alat (aturan di /responsibilities) + PIC ruangan. Preferensi: semua role. Log: admin/SPV. Retry/uji/job manual/aturan: admin.' }];
 
 export const emailSchemas = {
   EmailLog: {
@@ -23,6 +23,8 @@ export const emailSchemas = {
 };
 
 const q = (name: string, schema: unknown) => ({ name, in: 'query', schema });
+
+const SETTINGS_PROPS = { email_enabled: { type: 'boolean' }, calibration_email_mode: { type: 'string', enum: ['auto', 'manual'] }, overdue_repeat_days: { type: 'integer', minimum: 1, maximum: 30 }, calibration_job_time: { type: 'string', example: '07:00' }, smtp_host: { type: 'string' }, smtp_port: { type: 'integer' }, smtp_secure: { type: 'boolean' }, smtp_user: { type: 'string' }, mail_from: { type: 'string' }, frontend_url: { type: 'string' } };
 
 export const emailPaths = {
   '/responsibilities': {
@@ -86,6 +88,30 @@ export const emailPaths = {
       tags: [T], summary: 'Jalankan job pengingat kalibrasi manual (admin)', description: 'dry_run=true: kembalikan daftar email yang AKAN dikirim (to, user_id, name, role, subject, items), daftar unassigned (alat jatuh tempo tanpa penerima: tidak akan dikirim ke siapa pun), beserta mode (CALIBRATION_EMAIL_MODE) dan email_enabled, tanpa mengirim atau mencatat apa pun. dry_run=false menjalankan job lengkap (di mode manual, bagian email dilewati).', security: sec,
       parameters: [q('dry_run', { type: 'boolean', default: false })],
       responses: { '200': { description: 'OK' }, '403': err('Tidak punya akses') },
+    },
+  },
+  '/admin/settings/email': {
+    get: {
+      tags: [T], summary: 'Pengaturan email saat ini (admin)', security: sec,
+      description: 'Nilai efektif = default .env ditimpa yang disimpan dari frontend. smtp_pass TIDAK pernah dikembalikan; smtp_pass_set menandakan sudah terisi. using_defaults=true bila belum pernah diubah dari frontend.',
+      responses: { '200': { description: 'OK', ...env({ type: 'object', properties: { ...SETTINGS_PROPS, smtp_pass_set: { type: 'boolean' }, using_defaults: { type: 'boolean' }, updated_at: { type: 'string', format: 'date-time', nullable: true } } }) }, '403': err('Tidak punya akses') },
+    },
+    patch: {
+      tags: [T], summary: 'Ubah pengaturan email (admin)', security: sec,
+      description: 'PATCH parsial, berlaku tanpa restart server. smtp_pass kosong/tidak dikirim = password lama tetap; clear_smtp_pass=true menghapusnya. Password disimpan terenkripsi. Perubahan jam job (calibration_job_time) menjadwalkan ulang job harian. Dicatat di activity log (tanpa password).',
+      requestBody: { required: true, ...json({ type: 'object', properties: { ...SETTINGS_PROPS, smtp_pass: { type: 'string', writeOnly: true }, clear_smtp_pass: { type: 'boolean' } } }) },
+      responses: { '200': { description: 'Pengaturan setelah diubah' }, '403': err('Tidak punya akses'), '422': err('Validasi gagal') },
+    },
+    delete: {
+      tags: [T], summary: 'Kembalikan pengaturan email ke default .env (admin)', security: sec,
+      responses: { '200': { description: 'Pengaturan tersimpan dihapus; memakai nilai .env' }, '403': err('Tidak punya akses') },
+    },
+  },
+  '/admin/settings/email/test-connection': {
+    post: {
+      tags: [T], summary: 'Tes koneksi dan login ke server SMTP (admin)', security: sec,
+      description: 'Memakai pengaturan tersimpan. Tidak mengirim email. Selalu 200; hasilnya di data.ok dan data.error.',
+      responses: { '200': { description: 'Hasil tes' }, '403': err('Tidak punya akses') },
     },
   },
 };

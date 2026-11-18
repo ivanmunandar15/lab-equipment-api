@@ -1,10 +1,10 @@
 import type { Prisma } from '@prisma/client';
-import { env } from '../../config/env';
 import { getDb } from '../../config/db';
 import { logger } from '../../config/logger';
 import { AppError } from '../../utils/errors';
 import { buildMeta, getPagination, resolveSort } from '../../utils/pagination';
 import { emailQueue } from './email.queue';
+import { loadEmailSettings } from './email-settings';
 import { sendMail } from './mailer';
 import { renderDigest, renderTest, type DigestPayload, type Rendered } from './templates/digest';
 import type { ListEmailLogsQuery } from './email.schema';
@@ -31,11 +31,12 @@ export async function deliverEmail(emailLogId: string): Promise<{ ok: boolean; s
     if (!row) return { ok: false, status: 'missing' };
     if (row.status === 'sent') return { ok: true, status: 'sent' };
 
+    const settings = await loadEmailSettings();
     const rendered = renderFor(row, row.user?.name ?? row.recipient_email);
     try {
       let messageId: string | null;
-      if (!env.EMAIL_ENABLED) {
-        logger.info({ to: row.recipient_email, subject: rendered.subject, text: rendered.text }, 'EMAIL_ENABLED=false — email tidak dikirim (isi dicatat)');
+      if (!settings.email_enabled) {
+        logger.info({ to: row.recipient_email, subject: rendered.subject, text: rendered.text }, 'email nonaktif — email tidak dikirim (isi dicatat)');
         messageId = 'dev-log';
       } else {
         messageId = await sendMail({ to: row.recipient_email, subject: rendered.subject, html: rendered.html, text: rendered.text });
@@ -126,7 +127,7 @@ export async function sendTest(user: { user_id: string; email: string; name: str
     select: { email_log_id: true },
   });
   const res = await deliverEmail(row.email_log_id);
-  return { email_log_id: row.email_log_id, to: user.email, status: res.status, error_message: res.error ?? null, email_enabled: env.EMAIL_ENABLED };
+  return { email_log_id: row.email_log_id, to: user.email, status: res.status, error_message: res.error ?? null, email_enabled: (await loadEmailSettings()).email_enabled };
 }
 
 export async function setPreference(userId: string, email_notifications: boolean) {
