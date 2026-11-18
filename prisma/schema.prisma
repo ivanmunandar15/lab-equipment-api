@@ -114,6 +114,7 @@ model User {
   updated_at    DateTime @updatedAt
 
   email_logs      EmailLog[]
+  responsibilities EquipmentResponsibility[]
   rooms_in_charge Room[]         @relation("RoomPIC")
   borrowings      Borrowing[]
   calibrations    Calibration[]
@@ -139,6 +140,7 @@ model Room {
 
   pic       User?       @relation("RoomPIC", fields: [person_in_charge], references: [user_id], onDelete: SetNull)
   equipment Equipment[]
+  responsibilities EquipmentResponsibility[]
   sensors   Sensor[]
 
   @@index([person_in_charge])
@@ -462,4 +464,23 @@ model RefreshToken {
   @@index([user_id])
   @@index([expires_at])
   @@map("refresh_tokens")
+}
+
+/// Penanggung jawab alat untuk email pengingat kalibrasi. Satu aturan = satu user + kriteria:
+/// awalan kode inventaris (mis. "INV L-ACT 10") dan/atau ruangan. Alat cocok bila SEMUA kriteria yang terisi cocok;
+/// minimal satu kriteria terisi (dijaga di service). Beberapa aturan/beberapa user boleh cocok ke alat yang sama.
+/// Tidak ada unique (NULL di PostgreSQL dianggap berbeda): duplikat dicegah di service.
+model EquipmentResponsibility {
+  responsibility_id String   @id @default(uuid()) @db.Uuid
+  user_id           String   @db.Uuid
+  code_prefix       String?  @db.VarChar(50)
+  room_id           String?  @db.Uuid
+  created_at        DateTime @default(now())
+
+  user User  @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  room Room? @relation(fields: [room_id], references: [room_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([room_id])
+  @@map("equipment_responsibility")
 }

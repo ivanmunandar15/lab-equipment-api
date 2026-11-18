@@ -10,7 +10,8 @@ vi.mock('../src/config/db', async () => {
 
 import * as dbModule from '../src/config/db';
 import { createApp } from '../src/app';
-import { runCalibrationReminders, calibrationStage } from '../src/jobs/calibration.job';
+import { runCalibrationReminders, runCalibrationJob, calibrationStage } from '../src/jobs/calibration.job';
+import { env } from '../src/config/env';
 import { runBorrowingOverdueReminders } from '../src/jobs/borrowing-overdue.job';
 import { runLowStockReminders } from '../src/jobs/low-stock.job';
 import { runWeeklyCleanup } from '../src/jobs/weekly-cleanup.job';
@@ -141,6 +142,20 @@ describe('Cron jobs', () => {
     expect(fake.notification.rows.length).toBe(n1 * 3);
     expect(fake.notification.rows.some((n: any) => n.title === 'Kalibrasi terlambat')).toBe(true);
     expect(e.equipment_id).toBeTruthy();
+  });
+
+  it('CALIBRATION_EMAIL_MODE=manual: job harian tetap membuat notifikasi in-app tetapi tidak menyentuh email', async () => {
+    const original = env.CALIBRATION_EMAIL_MODE;
+    (env as any).CALIBRATION_EMAIL_MODE = 'manual';
+    try {
+      await mkEq({ next_calibration_date: day(25) });
+      const r: any = await runCalibrationJob();
+      expect(r.in_app).toMatchObject({ checked: 1, created: 1 });
+      expect(r.email).toEqual({ skipped: 'CALIBRATION_EMAIL_MODE=manual' });
+      expect(fake.emailLog?.rows?.length ?? 0).toBe(0);
+    } finally {
+      (env as any).CALIBRATION_EMAIL_MODE = original;
+    }
   });
 
   it('peminjaman terlambat: ke peminjam + SPV, maksimal sekali per hari', async () => {

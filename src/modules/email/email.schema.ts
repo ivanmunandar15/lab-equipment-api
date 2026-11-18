@@ -21,6 +21,12 @@ export const listEmailLogsQuery = paginationQuerySchema
   .refine((v) => !v.date_from || !v.date_to || v.date_from <= v.date_to, { message: 'date_from tidak boleh setelah date_to', path: ['date_from'] });
 export type ListEmailLogsQuery = z.infer<typeof listEmailLogsQuery>;
 
+/** Penerima yang dipilih admin untuk pengiriman manual (user_id dari pratinjau). */
+export const sendRemindersBody = z.object({
+  user_ids: z.array(z.string().uuid()).min(1, 'Pilih minimal satu penerima').max(200).transform((ids) => [...new Set(ids)]),
+});
+export type SendRemindersBody = z.infer<typeof sendRemindersBody>;
+
 export const runJobQuery = z.object({
   dry_run: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
 });

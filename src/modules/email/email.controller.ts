@@ -1,10 +1,11 @@
+import { env } from '../../config/env';
 import { runCalibrationJob } from '../../jobs/calibration.job';
 import { runJob } from '../../jobs/runner';
 import { asyncHandler } from '../../utils/async-handler';
 import { ok, paginated } from '../../utils/response';
 import { runCalibrationEmailReminders } from './calibration-reminders';
 import * as service from './email.service';
-import type { ListEmailLogsQuery } from './email.schema';
+import type { ListEmailLogsQuery, SendRemindersBody } from './email.schema';
 
 export const updatePreferences = asyncHandler(async (req, res) => {
   ok(res, await service.setPreference(req.user!.user_id, req.body.email_notifications));
@@ -26,7 +27,13 @@ export const sendTest = asyncHandler(async (req, res) => {
 
 export const runCalibrationReminders = asyncHandler(async (req, res) => {
   const dry = (req.query as unknown as { dry_run: boolean }).dry_run;
-  if (dry) return ok(res, await runCalibrationEmailReminders(new Date(), { dryRun: true }));
+  if (dry) return ok(res, { ...(await runCalibrationEmailReminders(new Date(), { dryRun: true })), mode: env.CALIBRATION_EMAIL_MODE, email_enabled: env.EMAIL_ENABLED });
   const result = await runJob({ name: 'calibration-reminders', run: () => runCalibrationJob() });
   ok(res, { dry_run: false, result: result ?? { skipped: 'job sedang berjalan atau gagal, lihat log' } });
+});
+
+/** Kirim email pengingat HANYA ke penerima terpilih (hasil pratinjau dry_run). Email diantrekan; status akhir ada di log. */
+export const sendCalibrationReminders = asyncHandler(async (req, res) => {
+  const result = await runCalibrationEmailReminders(new Date(), { userIds: (req.body as SendRemindersBody).user_ids });
+  ok(res, { ...result, email_enabled: env.EMAIL_ENABLED });
 });

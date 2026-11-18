@@ -6,7 +6,13 @@ import { CODE_REGEX } from '../src/modules/equipment/equipment.schema';
 
 /* ───────── Personil ───────── */
 export type SeedRole = 'technician' | 'SPV';
-export interface SeedPerson { name: string; email: string; role: SeedRole }
+export interface SeedPerson {
+  name: string;
+  email: string;
+  role: SeedRole;
+  /** Awalan kode inventaris yang menjadi tanggung jawabnya (penerima email pengingat kalibrasi alat tersebut). */
+  responsible_for?: string[];
+}
 
 /** Personil laboratorium (technician) dan SPV. Akun admin sistem dibuat terpisah di seed.ts. */
 export const PERSONNEL: SeedPerson[] = [
@@ -14,8 +20,8 @@ export const PERSONNEL: SeedPerson[] = [
   { name: 'I Putu Ary Suyasa', email: 'ary.suyasa_act@anindya.biz', role: 'technician' },
   { name: 'Ralphy Christian Monintja', email: 'ralphy_act@anindya.biz', role: 'technician' },
   { name: 'Deni Arifani Nafis', email: 'deni.arifani_act@anindya.biz', role: 'technician' },
-  { name: 'Ach. Effendi', email: 'ach.effendi_act@anindya.biz', role: 'SPV' },
-  { name: 'Muhamad Ridwan Maulana', email: 'm.ridwan_act@anindya.biz', role: 'SPV' },
+  { name: 'Ach. Effendi', email: 'ach.effendi_act@anindya.biz', role: 'SPV', responsible_for: ['INV L-ACT 10'] },
+  { name: 'Muhamad Ridwan Maulana', email: 'm.ridwan_act@anindya.biz', role: 'SPV', responsible_for: ['INV L-ACT 10'] },
 ];
 
 /* ───────── Ruangan ───────── */

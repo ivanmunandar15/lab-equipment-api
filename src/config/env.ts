@@ -45,6 +45,12 @@ const schema = z.object({
   MAIL_FROM: z.string().min(3).default('Lab Equipment <no-reply@lab.local>'),
   FRONTEND_URL: z.string().url('FRONTEND_URL harus berupa URL valid').default('http://localhost:3001'),
   /** Pengingat kalibrasi terlambat diulang tiap N hari sampai kalibrasi dicatat. */
+  /**
+   * Email pengingat kalibrasi dari job harian. auto = job harian mengirim ke semua penerima yang jatuh tempo (perilaku awal).
+   * manual = job harian TIDAK mengirim email (notifikasi di aplikasi tetap dibuat); email hanya keluar lewat
+   * POST /admin/email/calibration-reminders/send dengan penerima yang dipilih admin.
+   */
+  CALIBRATION_EMAIL_MODE: z.enum(['auto', 'manual']).default('auto'),
   OVERDUE_REMINDER_REPEAT_DAYS: z.coerce.number().int().min(1).max(30).default(3),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });

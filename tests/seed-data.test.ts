@@ -17,6 +17,15 @@ describe('seed-data: personil & ruangan', () => {
     for (const e of emails) expect(e).toMatch(/^[^@\s]+@[^@\s]+\.[^@\s]+$/);
   });
 
+  it('aturan penanggung jawab awal: Fendi dan Ridwan memegang INV L-ACT 10', () => {
+    const owners = PERSONNEL.filter((p) => p.responsible_for?.length);
+    expect(owners.map((p) => p.email).sort()).toEqual(['ach.effendi_act@anindya.biz', 'm.ridwan_act@anindya.biz']);
+    for (const p of owners) {
+      expect(p.role).toBe('SPV');
+      expect(p.responsible_for).toEqual(['INV L-ACT 10']);
+    }
+  });
+
   it('kode dan nama ruangan unik; 8 laboratorium resmi + 5 dari CSV', () => {
     expect(new Set(LAB_ROOMS.map((r) => r.room_code)).size).toBe(LAB_ROOMS.length);
     expect(new Set(LAB_ROOMS.map((r) => r.room_name)).size).toBe(LAB_ROOMS.length);

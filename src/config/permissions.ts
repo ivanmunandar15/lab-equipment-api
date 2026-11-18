@@ -50,4 +50,6 @@ export const PERMISSIONS = {
   emailLogs: { read: ['admin', 'SPV'] as RoleName[], retry: ['admin'] as RoleName[] },
   /** Alat admin: email uji & jalankan job manual. */
   adminTools: { emailTest: ['admin'] as RoleName[], runJobs: ['admin'] as RoleName[] },
+  /** Aturan penanggung jawab alat (penerima email pengingat). */
+  responsibilities: { read: ['admin', 'SPV'] as RoleName[], manage: ['admin'] as RoleName[] },
 };

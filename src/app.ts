@@ -26,6 +26,7 @@ import { monitoringRouter } from './modules/monitoring/monitoring.routes';
 import { documentsRouter } from './modules/documents/documents.routes';
 import { notificationsRouter } from './modules/notifications/notifications.routes';
 import { adminRouter, emailLogsRouter, meRouter } from './modules/email/email.routes';
+import { responsibilitiesRouter } from './modules/responsibilities/responsibilities.routes';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 import { compatRouter } from './modules/compat/compat.routes';
 
@@ -69,6 +70,7 @@ export function createApp() {
   api.use('/dashboard', dashboardRouter);
   api.use('/me', meRouter);
   api.use('/email-logs', emailLogsRouter);
+  api.use('/responsibilities', responsibilitiesRouter);
   api.use('/admin', adminRouter);
   api.use('/compat', compatRouter);
   app.use('/api/v1', api);

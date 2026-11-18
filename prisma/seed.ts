@@ -90,6 +90,12 @@ async function main() {
     })),
   ];
 
+  // Penanggung jawab alat (penerima email pengingat kalibrasi): per awalan kode inventaris.
+  const userIdByEmail = new Map(users.map((u) => [u.email, u.user_id as string]));
+  const responsibilities: Prisma.EquipmentResponsibilityCreateManyInput[] = PERSONNEL.flatMap((p) =>
+    (p.responsible_for ?? []).map((code_prefix) => ({ user_id: userIdByEmail.get(p.email) as string, code_prefix, room_id: null })),
+  );
+
   // Penanggung jawab ruangan dikosongkan: belum ada data pembagian ruangan.
   const roomIdByCode = new Map<string, string>();
   const rooms: Prisma.RoomCreateManyInput[] = LAB_ROOMS.map((r) => {
@@ -173,10 +179,12 @@ async function main() {
         await tx.supportingEquipment.deleteMany();
         await tx.equipment.deleteMany();
         await tx.room.deleteMany();
+        await tx.equipmentResponsibility.deleteMany();
         await tx.refreshToken.deleteMany();
         await tx.user.deleteMany();
       }
       await tx.user.createMany({ data: users });
+      await tx.equipmentResponsibility.createMany({ data: responsibilities });
       await tx.room.createMany({ data: rooms });
       await tx.equipment.createMany({ data: equipment });
       await tx.supportingEquipment.createMany({ data: supporting });
@@ -193,7 +201,7 @@ async function main() {
   // ───────── Ringkasan ─────────
   const withCal = equipment.filter((e) => e.next_calibration_date).length;
   console.log(
-    `✅ Seed selesai (${cfg.mode}): ${users.length} user, ${rooms.length} ruangan, ${equipment.length} alat utama ` +
+    `✅ Seed selesai (${cfg.mode}): ${users.length} user, ${responsibilities.length} aturan penanggung jawab, ${rooms.length} ruangan, ${equipment.length} alat utama ` +
       `(${withCal} dengan jadwal kalibrasi), ${supporting.length} alat pendukung`,
   );
   console.table(

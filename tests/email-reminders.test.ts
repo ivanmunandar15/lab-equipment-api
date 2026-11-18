@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'crypto';
 
 // ───────── fake DB minimal khusus modul email ─────────
-const state: { equipment: any[]; users: any[]; logs: any[] } = { equipment: [], users: [], logs: [] };
+const state: { equipment: any[]; users: any[]; logs: any[]; rules: any[] } = { equipment: [], users: [], logs: [], rules: [] };
 const fakeDb: any = {
   equipment: { findMany: async () => state.equipment },
+  equipmentResponsibility: { findMany: async () => state.rules },
   user: { findMany: async ({ where }: any) => state.users.filter((u) => u.is_active && where.role.in.includes(u.role) && (where.email_notifications === undefined || u.email_notifications === where.email_notifications)) },
   emailLog: {
     async findMany({ where }: any = {}) {
@@ -45,6 +46,7 @@ vi.mock('../src/config/db', () => ({ getDb: () => fakeDb, disconnectDb: async ()
 const sendMail = vi.fn(async () => 'msg-1');
 vi.mock('../src/modules/email/mailer', () => ({ sendMail: (...a: any[]) => (sendMail as any)(...a), verifyMailer: async () => true }));
 
+import { EMAIL_RECIPIENTS } from '../src/config/email-recipients';
 import { emailStageFor, daysUntil } from '../src/modules/email/reminder-stage';
 import { planCalibrationEmails, recipientsForEquipment, runCalibrationEmailReminders } from '../src/modules/email/calibration-reminders';
 import { deliverEmail } from '../src/modules/email/email.service';
@@ -65,6 +67,10 @@ beforeEach(() => {
   state.equipment = [];
   state.users = [];
   state.logs = [];
+  state.rules = [];
+  // Tes lama memakai mode lama (semua SPV menerima); mode penanggung jawab diuji di describe terpisah di bawah.
+  EMAIL_RECIPIENTS.roles = ['SPV'];
+  EMAIL_RECIPIENTS.byResponsibility = true;
   sendMail.mockReset();
   sendMail.mockResolvedValue('msg-1');
   emailQueue.reset();
@@ -142,6 +148,57 @@ describe('job email kalibrasi', () => {
     expect(state.logs.filter((l) => l.reminder_type === 'calibration_7d')).toHaveLength(2);
   });
 
+  it('pratinjau memuat nama penerima', async () => {
+    const spv = mkUser({ name: 'Ach. Effendi' });
+    state.users.push(spv);
+    state.equipment.push(mkEq(7));
+    const dry: any = await runCalibrationEmailReminders(NOW, { dryRun: true });
+    expect(dry.emails[0]).toMatchObject({ to: spv.email, user_id: spv.user_id, name: 'Ach. Effendi' });
+  });
+
+  it('pengiriman terpilih: hanya penerima yang dipilih; yang tidak dipilih tidak dicatat dan masih bisa dikirim kemudian', async () => {
+    const a = mkUser();
+    const b = mkUser();
+    state.users.push(a, b);
+    state.equipment.push(mkEq(7), mkEq(1));
+    const r1: any = await runCalibrationEmailReminders(NOW, { userIds: [a.user_id] });
+    expect(r1).toMatchObject({ dry_run: false, recipients: 1, queued: 1, requested: 1, not_planned: 0 });
+    const digests = state.logs.filter((l) => l.reminder_type === 'digest');
+    expect(digests).toHaveLength(1);
+    expect(digests[0].user_id).toBe(a.user_id);
+    expect(state.logs.every((l) => l.user_id === a.user_id)).toBe(true); // tidak ada penanda untuk b
+    expect(emailQueue.held).toHaveLength(1);
+    // b masih terencana, a tidak (sudah dikirim) → pratinjau berikutnya hanya b
+    const dry: any = await runCalibrationEmailReminders(NOW, { dryRun: true });
+    expect(dry.emails.map((e: any) => e.user_id)).toEqual([b.user_id]);
+    const r2: any = await runCalibrationEmailReminders(NOW, { userIds: [b.user_id] });
+    expect(r2).toMatchObject({ recipients: 1, queued: 1 });
+    expect(state.logs.filter((l) => l.reminder_type === 'digest')).toHaveLength(2);
+  });
+
+  it('pengiriman terpilih: user yang tidak (lagi) terencana dilaporkan not_planned dan tidak mengirim apa pun; klik ganda tidak mengirim dua kali', async () => {
+    const a = mkUser();
+    state.users.push(a);
+    state.equipment.push(mkEq(7));
+    const ghost = randomUUID();
+    const r1: any = await runCalibrationEmailReminders(NOW, { userIds: [ghost] });
+    expect(r1).toMatchObject({ recipients: 0, queued: 0, requested: 1, not_planned: 1 });
+    expect(state.logs).toHaveLength(0);
+    const ok1: any = await runCalibrationEmailReminders(NOW, { userIds: [a.user_id, ghost] });
+    const ok2: any = await runCalibrationEmailReminders(NOW, { userIds: [a.user_id] }); // klik ganda
+    expect(ok1).toMatchObject({ queued: 1, requested: 2, not_planned: 1 });
+    expect(ok2).toMatchObject({ queued: 0, recipients: 0 });
+    expect(state.logs.filter((l) => l.reminder_type === 'digest')).toHaveLength(1);
+  });
+
+  it('tanpa userIds perilaku lama tidak berubah (semua penerima)', async () => {
+    state.users.push(mkUser(), mkUser());
+    state.equipment.push(mkEq(7));
+    const r: any = await runCalibrationEmailReminders(NOW);
+    expect(r).toMatchObject({ recipients: 2, queued: 2 });
+    expect(r.requested).toBeUndefined();
+  });
+
   it('tidak ada alat → tidak ada email', async () => {
     state.users.push(mkUser());
     state.equipment.push(mkEq(15));
@@ -202,5 +259,105 @@ describe('template', () => {
     expect(r.html).toContain('/equipment/e1');
     expect(r.text).toContain('H-7');
     expect(r.subject).toBe('[Lab] 1 alat mendekati jatuh tempo kalibrasi');
+  });
+});
+
+describe('penanggung jawab alat (aturan)', () => {
+  const rule = (user: any, code_prefix: string | null, room_id: string | null = null) => ({ user_id: user.user_id, code_prefix, room_id, user });
+  const named = (name: string, o: any = {}) => mkUser({ name, ...o });
+  const itemsByName = (dry: any) => Object.fromEntries(dry.emails.map((e: any) => [e.name, e.items.map((i: any) => i.inventory_code).sort()]));
+
+  beforeEach(() => {
+    EMAIL_RECIPIENTS.roles = []; // SPV TIDAK otomatis menerima semua alat
+  });
+
+  it('hanya penanggung jawab yang cocok yang menerima: L-ACT 10 -> Fendi+Ridwan, L-ACT 09 -> Zahra', async () => {
+    const fendi = named('Fendi'), ridwan = named('Ridwan'), zahra = named('Zahra');
+    state.users.push(fendi, ridwan, zahra);
+    state.rules = [rule(fendi, 'INV L-ACT 10'), rule(ridwan, 'INV L-ACT 10'), rule(zahra, 'INV L-ACT 09')];
+    state.equipment.push(mkEq(7, { inventory_code: 'INV L-ACT 10-01' }), mkEq(7, { inventory_code: 'INV L-ACT 10-02.01' }), mkEq(1, { inventory_code: 'INV L-ACT 09-05' }));
+    const dry: any = await runCalibrationEmailReminders(NOW, { dryRun: true });
+    expect(itemsByName(dry)).toEqual({
+      Fendi: ['INV L-ACT 10-01', 'INV L-ACT 10-02.01'],
+      Ridwan: ['INV L-ACT 10-01', 'INV L-ACT 10-02.01'],
+      Zahra: ['INV L-ACT 09-05'],
+    });
+    expect(dry.unassigned).toEqual([]);
+  });
+
+  it('alat tanpa aturan TIDAK dikirim ke siapa pun (bukan fallback ke semua SPV) dan muncul di unassigned', async () => {
+    const fendi = named('Fendi');
+    state.users.push(fendi, mkUser({ role: 'SPV' })); // SPV lain ada, tetapi bukan penanggung jawab
+    state.rules = [rule(fendi, 'INV L-ACT 10')];
+    state.equipment.push(mkEq(7, { inventory_code: 'INV L-ACT 11-01' }));
+    const dry: any = await runCalibrationEmailReminders(NOW, { dryRun: true });
+    expect(dry.emails).toEqual([]);
+    expect(dry.unassigned).toHaveLength(1);
+    expect(dry.unassigned[0]).toMatchObject({ inventory_code: 'INV L-ACT 11-01', reason: 'no_rule', stage: 'calibration_7d' });
+    const real: any = await runCalibrationEmailReminders(NOW);
+    expect(real).toMatchObject({ queued: 0, recipients: 0, unassigned: 1 });
+    expect(state.logs).toHaveLength(0);
+  });
+
+  it('awalan dicocokkan pada batas kode: "INV L-ACT 100-1" bukan milik penanggung jawab "INV L-ACT 10"', async () => {
+    const fendi = named('Fendi');
+    state.users.push(fendi);
+    state.rules = [rule(fendi, 'INV L-ACT 10')];
+    state.equipment.push(mkEq(7, { inventory_code: 'INV L-ACT 100-1' }), mkEq(7, { inventory_code: 'inv  l-act 10-03' }));
+    const dry: any = await runCalibrationEmailReminders(NOW, { dryRun: true });
+    expect(itemsByName(dry)).toEqual({ Fendi: ['inv  l-act 10-03'] });
+    expect(dry.unassigned.map((u: any) => u.inventory_code)).toEqual(['INV L-ACT 100-1']);
+  });
+
+  it('aturan ruangan dan PIC ruangan sama-sama menjadi penerima (tanpa duplikat)', async () => {
+    const zahra = named('Zahra'), pic = named('PIC');
+    state.users.push(zahra, pic);
+    state.rules = [rule(zahra, null, 'room-1'), rule(pic, null, 'room-1')]; // PIC juga punya aturan: tetap satu email
+    state.equipment.push(mkEq(7, { inventory_code: 'X-1', room_id: 'room-1', room: { room_name: 'Lab A', pic } }), mkEq(7, { inventory_code: 'X-2', room_id: 'room-2', room: { room_name: 'Lab B', pic: null } }));
+    const dry: any = await runCalibrationEmailReminders(NOW, { dryRun: true });
+    expect(itemsByName(dry)).toEqual({ Zahra: ['X-1'], PIC: ['X-1'] });
+    expect(dry.unassigned.map((u: any) => u.inventory_code)).toEqual(['X-2']);
+  });
+
+  it('aturan dengan awalan DAN ruangan hanya cocok bila keduanya cocok', async () => {
+    const zahra = named('Zahra');
+    state.users.push(zahra);
+    state.rules = [rule(zahra, 'INV L-ACT 10', 'room-1')];
+    state.equipment.push(mkEq(7, { inventory_code: 'INV L-ACT 10-01', room_id: 'room-1' }), mkEq(7, { inventory_code: 'INV L-ACT 10-02', room_id: 'room-2' }));
+    const dry: any = await runCalibrationEmailReminders(NOW, { dryRun: true });
+    expect(itemsByName(dry)).toEqual({ Zahra: ['INV L-ACT 10-01'] });
+  });
+
+  it('penanggung jawab yang mematikan email / nonaktif dilewati: alat dilaporkan no_eligible_recipient', async () => {
+    const off = named('Off', { email_notifications: false }), gone = named('Gone', { is_active: false });
+    state.rules = [rule(off, 'INV L-ACT 10'), rule(gone, 'INV L-ACT 10')];
+    state.equipment.push(mkEq(7, { inventory_code: 'INV L-ACT 10-01' }));
+    const dry: any = await runCalibrationEmailReminders(NOW, { dryRun: true });
+    expect(dry.emails).toEqual([]);
+    expect(dry.unassigned[0]).toMatchObject({ inventory_code: 'INV L-ACT 10-01', reason: 'no_eligible_recipient' });
+  });
+
+  it('pengiriman terpilih: hanya user yang dicentang yang diantrekan; yang lain tidak disentuh dan masih bisa dikirim nanti', async () => {
+    const fendi = named('Fendi'), ridwan = named('Ridwan');
+    state.users.push(fendi, ridwan);
+    state.rules = [rule(fendi, 'INV L-ACT 10'), rule(ridwan, 'INV L-ACT 10')];
+    state.equipment.push(mkEq(7, { inventory_code: 'INV L-ACT 10-01' }), mkEq(1, { inventory_code: 'INV L-ACT 10-02' }));
+    const first: any = await runCalibrationEmailReminders(NOW, { userIds: [fendi.user_id] });
+    expect(first).toMatchObject({ queued: 1, recipients: 1, requested: 1, not_planned: 0 });
+    expect(state.logs.filter((l) => l.reminder_type === 'digest').map((l) => l.user_id)).toEqual([fendi.user_id]);
+    expect(state.logs.some((l) => l.user_id === ridwan.user_id)).toBe(false); // Ridwan tanpa penanda
+    const again: any = await runCalibrationEmailReminders(NOW, { userIds: [fendi.user_id] });
+    expect(again.queued).toBe(0); // idempoten untuk Fendi
+    const second: any = await runCalibrationEmailReminders(NOW, { userIds: [ridwan.user_id] });
+    expect(second.queued).toBe(1); // Ridwan masih bisa dikirim kemudian
+  });
+
+  it('mode lama tetap didukung lewat EMAIL_RECIPIENTS.roles', async () => {
+    EMAIL_RECIPIENTS.roles = ['SPV'];
+    const spv = named('SPV');
+    state.users.push(spv);
+    state.equipment.push(mkEq(7, { inventory_code: 'INV L-ACT 11-01' }));
+    const dry: any = await runCalibrationEmailReminders(NOW, { dryRun: true });
+    expect(itemsByName(dry)).toEqual({ SPV: ['INV L-ACT 11-01'] });
   });
 });

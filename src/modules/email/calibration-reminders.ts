@@ -5,6 +5,7 @@ import { getDb } from '../../config/db';
 import { logger } from '../../config/logger';
 import { localDayKey } from '../../jobs/runner';
 import { addUtcDays, dateOnly } from '../equipment/equipment.derive';
+import { ruleMatches, type ResponsibilityRule } from '../responsibilities/responsibility.match';
 import { emailQueue } from './email.queue';
 import { daysUntil, emailStageFor, lookaheadLimit, DAY_MS, type CalibrationEmailStage } from './reminder-stage';
 import { digestSubject, type DigestItem, type DigestPayload } from './templates/digest';
@@ -15,6 +16,7 @@ interface RecipientUser {
   email: string;
   is_active: boolean;
   email_notifications: boolean;
+  role?: string;
 }
 
 interface Candidate {
@@ -25,7 +27,14 @@ interface Candidate {
   stage: CalibrationEmailStage;
   days_left: number;
   room_name: string;
+  room_id: string | null;
   pic: RecipientUser | null;
+}
+
+/** Alat yang jatuh pada tahap pengingat tetapi tidak punya penerima email. */
+export interface UnassignedItem extends DigestItem {
+  /** no_rule = tidak ada aturan/PIC yang cocok; no_eligible_recipient = ada penanggung jawab, tetapi semuanya nonaktif/mematikan email. */
+  reason: 'no_rule' | 'no_eligible_recipient';
 }
 
 interface Marker {
@@ -49,32 +58,40 @@ export interface PlannedEmail {
 const eligible = (u: RecipientUser | null | undefined): u is RecipientUser => !!u && u.is_active && u.email_notifications && !!u.email;
 
 /**
- * Penerima sebuah alat = PIC ruangan + user aktif ber-role di EMAIL_RECIPIENTS.roles (tanpa duplikat),
- * hanya yang email_notifications = true. Dipisah agar mudah diuji.
+ * Penerima sebuah alat = user dari aturan penanggung jawab yang cocok + PIC ruangan + (lama) user ber-role di
+ * EMAIL_RECIPIENTS.roles, tanpa duplikat, hanya yang aktif dan email_notifications = true. Dipisah agar mudah diuji.
  */
-export function recipientsForEquipment(pic: RecipientUser | null, roleUsers: RecipientUser[]): RecipientUser[] {
+export function recipientsForEquipment(pic: RecipientUser | null, roleUsers: RecipientUser[], responsibleUsers: RecipientUser[] = []): RecipientUser[] {
   const map = new Map<string, RecipientUser>();
   if (EMAIL_RECIPIENTS.roomPersonInCharge && eligible(pic)) map.set(pic.user_id, pic);
+  for (const u of responsibleUsers) if (eligible(u)) map.set(u.user_id, u);
   for (const u of roleUsers) if (eligible(u)) map.set(u.user_id, u);
   return [...map.values()];
 }
 
-const USER_SELECT = { user_id: true, name: true, email: true, is_active: true, email_notifications: true } as const;
+const USER_SELECT = { user_id: true, name: true, email: true, is_active: true, email_notifications: true, role: true } as const;
 
-/** Susun rencana email (tanpa efek samping). `today` = tanggal lokal (UTC 00:00). */
+type RuleWithUser = ResponsibilityRule & { user: RecipientUser };
+
+/** Susun rencana email (tanpa efek samping). */
 export async function planCalibrationEmails(now: Date = new Date()): Promise<PlannedEmail[]> {
+  return (await planCalibrationEmailsDetailed(now)).plans;
+}
+
+/** Sama seperti planCalibrationEmails, ditambah daftar alat yang jatuh tempo tetapi tidak punya penerima. `today` = tanggal lokal (UTC 00:00). */
+export async function planCalibrationEmailsDetailed(now: Date = new Date()): Promise<{ plans: PlannedEmail[]; unassigned: UnassignedItem[] }> {
   const db = getDb();
   const today = new Date(`${localDayKey(now)}T00:00:00.000Z`);
 
   const rows = (await db.equipment.findMany({
     where: { is_active: true, status: { not: 'calibration' }, next_calibration_date: { lte: lookaheadLimit(today) } },
     select: {
-      equipment_id: true, equipment_name: true, inventory_code: true, is_active: true, status: true, next_calibration_date: true,
+      equipment_id: true, equipment_name: true, inventory_code: true, is_active: true, status: true, next_calibration_date: true, room_id: true,
       room: { select: { room_name: true, pic: { select: USER_SELECT } } },
     },
   })) as unknown as Array<{
     equipment_id: string; equipment_name: string; inventory_code: string; is_active: boolean; status: string;
-    next_calibration_date: Date | null; room: { room_name: string; pic: RecipientUser | null } | null;
+    next_calibration_date: Date | null; room_id?: string | null; room: { room_name: string; pic: RecipientUser | null } | null;
   }>;
 
   const candidates: Candidate[] = [];
@@ -85,15 +102,20 @@ export async function planCalibrationEmails(now: Date = new Date()): Promise<Pla
     if (!stage) continue;
     candidates.push({
       equipment_id: e.equipment_id, equipment_name: e.equipment_name, inventory_code: e.inventory_code,
-      next: e.next_calibration_date, stage, days_left: days, room_name: e.room?.room_name ?? '-', pic: e.room?.pic ?? null,
+      next: e.next_calibration_date, stage, days_left: days, room_name: e.room?.room_name ?? '-', room_id: e.room_id ?? null, pic: e.room?.pic ?? null,
     });
   }
-  if (!candidates.length) return [];
+  if (!candidates.length) return { plans: [], unassigned: [] };
 
-  const roleUsers = (await db.user.findMany({
-    where: { is_active: true, email_notifications: true, role: { in: EMAIL_RECIPIENTS.roles } },
-    select: USER_SELECT,
-  })) as RecipientUser[];
+  const roleUsers = EMAIL_RECIPIENTS.roles.length
+    ? ((await db.user.findMany({
+        where: { is_active: true, email_notifications: true, role: { in: EMAIL_RECIPIENTS.roles } },
+        select: USER_SELECT,
+      })) as RecipientUser[])
+    : [];
+  const rules = EMAIL_RECIPIENTS.byResponsibility
+    ? ((await db.equipmentResponsibility.findMany({ select: { user_id: true, code_prefix: true, room_id: true, user: { select: USER_SELECT } } })) as unknown as RuleWithUser[])
+    : [];
 
   // Penanda yang sudah ada (idempotensi).
   const markers = (await db.emailLog.findMany({
@@ -106,9 +128,20 @@ export async function planCalibrationEmails(now: Date = new Date()): Promise<Pla
 
   const repeatMs = env.OVERDUE_REMINDER_REPEAT_DAYS * DAY_MS;
   const plans = new Map<string, PlannedEmail>();
+  const unassigned: UnassignedItem[] = [];
 
   for (const c of candidates) {
-    for (const user of recipientsForEquipment(c.pic, roleUsers)) {
+    const responsible = rules.filter((r) => ruleMatches(r, { inventory_code: c.inventory_code, room_id: c.room_id })).map((r) => r.user);
+    const recipients = recipientsForEquipment(c.pic, roleUsers, responsible);
+    if (!recipients.length) {
+      unassigned.push({
+        equipment_id: c.equipment_id, equipment_name: c.equipment_name, inventory_code: c.inventory_code, room_name: c.room_name,
+        due_date: dateOnly(c.next) as string, days_left: c.days_left, stage: c.stage,
+        reason: responsible.length || c.pic || roleUsers.length ? 'no_eligible_recipient' : 'no_rule',
+      });
+      continue;
+    }
+    for (const user of recipients) {
       const marker = existing.get(keyOf(user.user_id, c.equipment_id, c.stage, c.next));
       let reuseId: string | null = null;
       if (marker) {
@@ -128,22 +161,29 @@ export async function planCalibrationEmails(now: Date = new Date()): Promise<Pla
       else plan.newMarkers.push({ equipment_id: c.equipment_id, type: c.stage, next: c.next });
     }
   }
-  return [...plans.values()];
+  return { plans: [...plans.values()], unassigned };
 }
 
 /**
  * Email pengingat kalibrasi (digest per penerima). Idempoten: tahap yang sama untuk jadwal kalibrasi yang sama tidak
  * dikirim dua kali (unique EMAIL_LOG). Kegagalan tidak pernah melempar ke pemanggil.
  */
-export async function runCalibrationEmailReminders(now: Date = new Date(), opts: { dryRun?: boolean } = {}) {
-  const plans = await planCalibrationEmails(now);
+export async function runCalibrationEmailReminders(now: Date = new Date(), opts: { dryRun?: boolean; userIds?: string[] } = {}) {
+  const planned = await planCalibrationEmailsDetailed(now);
+  let plans = planned.plans;
+  // Pengiriman terpilih: hanya penerima yang diminta. Rencana selalu dihitung ulang saat ini (bukan dari pratinjau lama),
+  // jadi yang terkirim adalah yang memang masih jatuh tempo; sisanya tidak disentuh (tidak ada penanda, bisa dipilih lagi nanti).
+  const requested = opts.userIds ? new Set(opts.userIds) : null;
+  if (requested) plans = plans.filter((p) => requested.has(p.user.user_id));
 
   if (opts.dryRun) {
     return {
       dry_run: true,
       emails: plans.map((p) => ({
-        to: p.user.email, user_id: p.user.user_id, subject: digestSubject(p.items), item_count: p.items.length, items: p.items,
+        to: p.user.email, user_id: p.user.user_id, name: p.user.name, role: p.user.role ?? null, subject: digestSubject(p.items), item_count: p.items.length, items: p.items,
       })),
+      // Alat jatuh tempo tanpa penerima: TIDAK ikut terkirim ke siapa pun. Lengkapi aturan di menu Penanggung Jawab.
+      unassigned: planned.unassigned,
     };
   }
 
@@ -186,7 +226,7 @@ export async function runCalibrationEmailReminders(now: Date = new Date(), opts:
       }
     }
   }
-  return { dry_run: false, recipients: plans.length, queued, skipped, failed };
+  return { dry_run: false, recipients: plans.length, queued, skipped, failed, unassigned: planned.unassigned.length, ...(requested ? { requested: requested.size, not_planned: requested.size - plans.length } : {}) };
 }
 
 export { addUtcDays };

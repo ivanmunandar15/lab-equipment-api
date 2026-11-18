@@ -2,6 +2,7 @@ import { getDb } from '../config/db';
 import { addUtcDays, dateOnly, startOfUtcDay } from '../modules/equipment/equipment.derive';
 import { createNotification } from '../modules/notifications/notify.service';
 import type { Role } from '@prisma/client';
+import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { runCalibrationEmailReminders } from '../modules/email/calibration-reminders';
 
@@ -62,6 +63,10 @@ export async function runCalibrationReminders(now: Date = new Date()) {
 export async function runCalibrationJob(now: Date = new Date()) {
   const in_app = await runCalibrationReminders(now);
   let email: unknown;
+  if (env.CALIBRATION_EMAIL_MODE === 'manual') {
+    // Email hanya lewat pengiriman manual (POST /admin/email/calibration-reminders/send), tidak otomatis.
+    return { in_app, email: { skipped: 'CALIBRATION_EMAIL_MODE=manual' } };
+  }
   try {
     email = await runCalibrationEmailReminders(now);
   } catch (err) {
