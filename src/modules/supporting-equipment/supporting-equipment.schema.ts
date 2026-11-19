@@ -25,9 +25,9 @@ export const createSupportingBody = z.object({
   item_type: optText(100),
   brand: optText(100),
   model: optText(100),
-  // Wajib hanya item_code & item_name. Sisanya opsional: kosong = default (unit 'pcs', total_quantity 0, condition 'good').
+  // Wajib hanya item_code & item_name. Sisanya opsional: kosong = default (unit 'pcs', total_quantity 1, condition 'good').
   unit: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), supportingFields.unit.default('pcs')),
-  total_quantity: supportingFields.total_quantity.default(0),
+  total_quantity: supportingFields.total_quantity.default(1),
   condition: supportingFields.condition.default('good'),
   description: optText(2000),
   specifications: optText(5000),

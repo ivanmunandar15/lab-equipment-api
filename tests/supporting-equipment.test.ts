@@ -119,7 +119,7 @@ describe('CRUD', () => {
   it('create: hanya item_code & item_name wajib; sisanya opsional dengan default', async () => {
     const res = await request(app).post(API).set(bearer(spv)).send({ item_code: 'MIN-1', item_name: 'Item Minimal' });
     expect(res.status).toBe(201);
-    expect(res.body.data).toMatchObject({ item_type: null, brand: null, model: null, unit: 'pcs', total_quantity: 0, condition: 'good' });
+    expect(res.body.data).toMatchObject({ item_type: null, brand: null, model: null, unit: 'pcs', total_quantity: 1, available_quantity: 1, condition: 'good' });
     const blank = await request(app).post(API).set(bearer(spv)).send({ item_code: 'MIN-2', item_name: 'Item Kosong', unit: '', item_type: '', brand: '', model: '' });
     expect(blank.status).toBe(201);
     expect(blank.body.data).toMatchObject({ item_type: null, brand: null, model: null, unit: 'pcs' });
@@ -238,6 +238,33 @@ describe('CRUD', () => {
   });
 });
 
+describe('hapus permanen', () => {
+  it('item tanpa riwayat terhapus; yang punya riwayat 409 ITEM_HAS_HISTORY; role QA 403; id tak ada 404', async () => {
+    const used = (await mk()).body.data.supporting_equipment_id;
+    lend(used, 2, 2, 'returned'); // sudah dikembalikan, tetapi tetap riwayat
+    const blocked = await request(app).delete(`${API}/${used}/permanent`).set(bearer(spv));
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.code).toBe('ITEM_HAS_HISTORY');
+    expect(fake.supportingEquipment.rows.some((r: any) => r.supporting_equipment_id === used)).toBe(true);
+
+    const free = (await mk()).body.data.supporting_equipment_id;
+    expect((await request(app).delete(`${API}/${free}/permanent`).set(bearer(qa))).status).toBe(403);
+    const del = await request(app).delete(`${API}/${free}/permanent`).set(bearer(spv));
+    expect(del.status).toBe(200);
+    expect(del.body.data.supporting_equipment_id).toBe(free);
+    expect(fake.supportingEquipment.rows.some((r: any) => r.supporting_equipment_id === free)).toBe(false);
+    expect(fake.activityLog.rows.some((l: any) => l.action === 'DELETE' && l.entity_type === 'supporting_equipment' && l.entity_id === free)).toBe(true);
+    expect((await request(app).delete(`${API}/${free}/permanent`).set(bearer(spv))).status).toBe(404);
+  });
+
+  it('item yang sedang dinonaktifkan tanpa riwayat tetap bisa dihapus permanen', async () => {
+    const id = (await mk()).body.data.supporting_equipment_id;
+    expect((await request(app).delete(`${API}/${id}`).set(bearer(spv))).status).toBe(200);
+    expect((await request(app).delete(`${API}/${id}/permanent`).set(bearer(spv))).status).toBe(200);
+    expect(fake.supportingEquipment.rows.some((r: any) => r.supporting_equipment_id === id)).toBe(false);
+  });
+});
+
 describe('QR, ekspor, label', () => {
   beforeEach(async () => {
     await mk({ item_code: 'X-1', item_name: 'Beaker, "250"' });
@@ -321,6 +348,14 @@ describe('Impor CSV', () => {
     expect(find(6)).toMatchObject({ field: 'total_quantity' });
     expect(find(7)).toMatchObject({ field: 'condition' });
     expect(fake.supportingEquipment.rows).toHaveLength(0);
+  });
+
+  it('total_quantity kosong di CSV = 1 (tersedia ikut 1); angka 0 eksplisit tetap 0', async () => {
+    const res = await upload(csv('K-1,Tanpa Jumlah,,,,', 'K-2,Nol Eksplisit,,,0,'), { dry_run: 'false' });
+    expect(res.status).toBe(201);
+    const row = (code: string) => fake.supportingEquipment.rows.find((r: any) => r.item_code === code);
+    expect(row('K-1')).toMatchObject({ total_quantity: 1, available_quantity: 1, status: 'available' });
+    expect(row('K-2')).toMatchObject({ total_quantity: 0, available_quantity: 0 });
   });
 
   it('all_or_nothing (default) menolak seluruh impor jika ada baris salah', async () => {

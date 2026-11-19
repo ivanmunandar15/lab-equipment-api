@@ -301,6 +301,27 @@ describe('supporting equipment', () => {
     expect((await request(app).get(`${C}/supporting-equipment/by-code/sp-1`).set(bearer(qa))).body.item_code).toBe('SP-1');
     expect((await request(app).get(`${C}/supporting-equipment/code-taken?code=SP-1`).set(bearer(qa))).body).toBe(true);
   });
+
+  it('jumlah total tidak diisi = 1', async () => {
+    const c = await request(app).post(`${C}/supporting-equipment`).set(bearer(spv)).send({ item_code: 'SP-DEF', item_name: 'Tanpa Jumlah' });
+    expect(c.status).toBe(201);
+    expect(c.body).toMatchObject({ total_quantity: 1, available_quantity: 1, status: 'available', unit: 'pcs' });
+  });
+
+  it('hapus permanen: tanpa riwayat terhapus; dengan riwayat peminjaman 409 ITEM_HAS_HISTORY; QA 403', async () => {
+    const free = (await request(app).post(`${C}/supporting-equipment`).set(bearer(spv)).send(spBody({ item_code: 'SP-DEL' }))).body;
+    expect((await request(app).delete(`${C}/supporting-equipment/${free.supporting_equipment_id}/permanent`).set(bearer(qa))).status).toBe(403);
+    const del = await request(app).delete(`${C}/supporting-equipment/${free.supporting_equipment_id}/permanent`).set(bearer(spv));
+    expect(del.status).toBe(200);
+    expect(del.body.item_code).toBe('SP-DEL');
+    expect((await request(app).get(`${C}/supporting-equipment/${free.supporting_equipment_id}`).set(bearer(qa))).status).toBe(404);
+
+    const used = (await request(app).post(`${C}/supporting-equipment`).set(bearer(spv)).send(spBody({ item_code: 'SP-USED' }))).body;
+    fake.supportingBorrowingDetail.rows.push({ supporting_equipment_id: used.supporting_equipment_id, borrowing_id: 'b-x', quantity_borrowed: 1, quantity_returned: 1 });
+    const blocked = await request(app).delete(`${C}/supporting-equipment/${used.supporting_equipment_id}/permanent`).set(bearer(spv));
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.code).toBe('ITEM_HAS_HISTORY');
+  });
 });
 
 describe('peminjaman & pengembalian', () => {

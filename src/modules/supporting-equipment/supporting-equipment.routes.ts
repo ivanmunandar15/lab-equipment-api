@@ -53,3 +53,5 @@ supportingEquipmentRouter.patch(
   c.update,
 );
 supportingEquipmentRouter.delete('/:id', write, validate({ params: idParams }), auditDelete(E, loadOld), c.remove);
+// Hapus permanen: hanya item tanpa riwayat peminjaman (409 ITEM_HAS_HISTORY bila ada).
+supportingEquipmentRouter.delete('/:id/permanent', write, validate({ params: idParams }), auditDelete(E, loadOld), c.purge);

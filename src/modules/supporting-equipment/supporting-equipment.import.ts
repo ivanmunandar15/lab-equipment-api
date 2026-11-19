@@ -17,7 +17,7 @@ const MAX_REPORTED_ERRORS = 500;
 export const IMPORT_COLUMNS = [
   'item_code', 'item_name', 'item_type', 'brand', 'model', 'unit', 'total_quantity', 'condition', 'description', 'specifications',
 ];
-// Wajib hanya item_code & item_name; kolom lain opsional (total_quantity kosong = 0).
+// Wajib hanya item_code & item_name; kolom lain opsional (total_quantity kosong = 1).
 const REQUIRED = ['item_code', 'item_name'];
 
 export const importTemplateCsv = () =>
@@ -169,7 +169,7 @@ export async function importCsv(file: { buffer: Buffer; originalname: string }, 
             while (tokens.has(token)) token = generateQrToken();
             tokens.add(token);
             const condition = r.data.condition ?? 'good';
-            const total = r.data.total_quantity ?? 0;
+            const total = r.data.total_quantity ?? 1; // kosong = 1
             const data = Object.fromEntries(Object.entries(r.data).filter(([, v]) => v !== undefined)) as typeof r.data;
             return {
               row: r.row,

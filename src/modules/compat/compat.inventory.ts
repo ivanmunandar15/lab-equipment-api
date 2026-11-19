@@ -350,6 +350,15 @@ supportingRouter.delete('/:id', spWrite, h(async (req, res) => {
   send(res, toSupporting(updated));
 }));
 
+/** Hapus permanen: hanya item tanpa riwayat peminjaman (409 ITEM_HAS_HISTORY bila ada). */
+supportingRouter.delete('/:id/permanent', spWrite, h(async (req, res) => {
+  const id = idParam(req, 'id', 'Alat pendukung');
+  const before = await findSupporting(id);
+  const removed = await supporting.purge(id);
+  await log(req, { action: AUDIT_ACTIONS.DELETE, entityType: SP, entityId: id, oldData: { item_code: before.item_code, item_name: before.item_name, permanent: true } });
+  send(res, toSupporting(removed));
+}));
+
 supportingRouter.post('/:id/restore', spWrite, h(async (req, res) => {
   const id = idParam(req, 'id', 'Alat pendukung');
   await findSupporting(id);

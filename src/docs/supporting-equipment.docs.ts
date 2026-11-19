@@ -103,6 +103,13 @@ export const supportingEquipmentPaths = {
     },
     delete: { tags: [T], summary: 'Soft delete; 409 ITEM_BORROWED jika masih ada yang dipinjam', security: sec, parameters: [idParam], responses: { '200': res('OK', ref('SupportingEquipment')), '409': err('ITEM_BORROWED') } },
   },
+  '/supporting-equipment/{id}/permanent': {
+    delete: {
+      tags: [T], summary: 'Hapus permanen item (admin, SPV)', security: sec, parameters: [idParam],
+      description: 'Menghapus baris item beserta QR-nya. Hanya untuk item yang belum pernah dipakai di peminjaman; bila sudah punya riwayat → 409 ITEM_HAS_HISTORY (gunakan DELETE /supporting-equipment/{id} untuk menonaktifkan).',
+      responses: { '200': res('Item yang dihapus', ref('SupportingEquipment')), '404': err('Tidak ditemukan'), '409': err('ITEM_HAS_HISTORY') },
+    },
+  },
   '/supporting-equipment/{id}/qr.png': {
     get: { tags: [T], summary: 'Gambar QR PNG (jenis item)', security: sec, parameters: [idParam, q('size', { type: 'integer', minimum: 100, maximum: 1000, default: 300 })], responses: { '200': file('PNG', 'image/png') } },
   },

@@ -266,6 +266,29 @@ export async function remove(id: string) {
   });
 }
 
+/**
+ * Hapus permanen. Hanya untuk item yang belum pernah dipakai di peminjaman, supaya riwayat peminjaman tidak hilang.
+ * Item yang sudah punya riwayat → 409 ITEM_HAS_HISTORY (gunakan nonaktifkan / `remove`).
+ */
+export async function purge(id: string) {
+  return getDb().$transaction(async (tx) => {
+    await lockItem(tx, id);
+    const cur = await tx.supportingEquipment.findUnique({ where: { supporting_equipment_id: id }, select: SUPPORTING_SELECT });
+    if (!cur) throw notFound();
+    const records = await tx.supportingBorrowingDetail.count({ where: { supporting_equipment_id: id } });
+    if (records > 0) {
+      throw new AppError(
+        409,
+        'ITEM_HAS_HISTORY',
+        `Item sudah punya ${records} catatan peminjaman, jadi tidak bisa dihapus permanen. Gunakan Nonaktifkan agar riwayat tetap utuh.`,
+        { borrowing_records: records },
+      );
+    }
+    await tx.supportingEquipment.delete({ where: { supporting_equipment_id: id } });
+    return presentSupporting(cur);
+  });
+}
+
 export async function getQrPng(id: string, size: number) {
   const row = await getDb().supportingEquipment.findUnique({
     where: { supporting_equipment_id: id },

@@ -87,12 +87,12 @@ export const bulkEquipmentSchema = z.array(createEquipmentSchema).min(1, 'Tidak 
 const supportingBase = z.object({
   item_code: code('Kode item'),
   item_name: text('Nama item', 150),
-  // Wajib hanya item_code & item_name. Sisanya opsional; kosong = default (unit 'pcs', total_quantity 0, condition 'good').
+  // Wajib hanya item_code & item_name. Sisanya opsional; kosong = default (unit 'pcs', total_quantity 1, condition 'good').
   item_type: optText('Jenis item', 100),
   brand: optText('Merek', 100),
   model: optText('Model', 100),
   unit: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), text('Satuan', 30).default('pcs')),
-  total_quantity: z.number().int('Jumlah total harus bilangan bulat').min(0, 'Jumlah total tidak boleh negatif').default(0),
+  total_quantity: z.number().int('Jumlah total harus bilangan bulat').min(0, 'Jumlah total tidak boleh negatif').default(1),
   condition: condition.default('good'),
   description: longText.nullable().optional(),
   specifications: longText.nullable().optional(),

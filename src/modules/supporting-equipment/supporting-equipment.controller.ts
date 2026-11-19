@@ -18,6 +18,7 @@ export const getById = asyncHandler(async (req, res) => ok(res, await service.ge
 export const create = asyncHandler(async (req, res) => created(res, await service.create(req.body)));
 export const update = asyncHandler(async (req, res) => ok(res, await service.update(req.params.id, req.body)));
 export const remove = asyncHandler(async (req, res) => ok(res, await service.remove(req.params.id)));
+export const purge = asyncHandler(async (req, res) => ok(res, await service.purge(req.params.id)));
 
 export const qr = asyncHandler(async (req, res) => {
   const { size } = q<{ size: number }>(req);
